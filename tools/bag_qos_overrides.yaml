@@ -1,0 +1,109 @@
+# ⚠️ 2026-10-13 实测结论：**不要用这个文件**
+#
+# 起因（当时判断错了）：机上"黑匣子"的 bag 里只有 /tofsense/height，没有 /fmu/out/*，
+#   看/ fmu/out/vehicle_status 的 QoS 是 BEST_EFFORT + TRANSIENT_LOCAL，就以为是
+#   "录制器按 RELIABLE 订阅 ⇒ QoS 不匹配"。于是做了这份覆盖表。
+#
+# 对照实验（2026-10-13 18:45-18:46，板上，只写 /tmp）：
+#   · 带覆盖 + /fmu/out/vehicle_status + /tofsense/height（25 s）→ **只有** /tofsense/height 录到
+#   · 带覆盖 + 4 个话题（14 s）                            → **只有** /fmu/out/battery_status 录到
+#   · **不带覆盖** + /fmu/out/vehicle_status（20 s）        → **录到 33 帧**（1.8 Hz，
+#        arming=1 nav=4 failsafe=False pre_chk=False）✅
+#   ⇒ 结论：**不带覆盖能录，带覆盖反而坏了**。本文件保留仅为留档，**不要接到
+#      record_flight.sh（或任何录制命令）上**。给 rosbag2 加 QoS 覆盖时要连同
+#      reliability/durability/history/depth 一起想清楚，别盲改。
+#
+# 真正的原因还没定：最可能是**录制器启动时飞控 DDS 话题还不存在/还没被发现**
+#   （这套 fastdds_udp_only.xml 有"新进程看不到已有话题"的老毛病，见 AGENTS.md §10）。
+#   下一步验证方向：录制前先等 `/fmu/*` 有发布者（或先起 agent 再起录制器）。
+# rosbag2 QoS 覆盖表 —— 给机载"黑匣子"用
+#
+# 为什么需要：飞控经 uXRCE-DDS 出来的话题（/fmu/out/*、/fmu/in/*）是
+#   Reliability=BEST_EFFORT + Durability=TRANSIENT_LOCAL；
+#   而 `ros2 bag record` 不带本文件时按默认（RELIABLE/VOLATILE）订阅
+#   ⇒ **QoS 不兼容，一个包都收不到**（2026-10-13 实测：bag 里只有我们自己节点的
+#   /tofsense/height，18:07 与 18:11 两份都是这样）。
+#
+# 订阅端取"最宽松"的组合即可同时匹配两类发布端：
+#   Reliability=best_effort 可与 reliable / best_effort 发布端匹配；
+#   Durability=volatile     可与 volatile / transient_local 发布端匹配。
+'/**':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/**':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/vehicle_status':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/vehicle_control_mode':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/vehicle_local_position':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/vehicle_attitude':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/vehicle_odometry':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/estimator_status_flags':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/failsafe_flags':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/battery_status':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/manual_control_setpoint':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/out/vehicle_command_ack':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/fmu/in/vehicle_visual_odometry':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/tofsense/height':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 50
+'/tf':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100
+'/tf_static':
+  reliability: best_effort
+  durability: volatile
+  history: keep_last
+  depth: 100

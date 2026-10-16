@@ -1,0 +1,22 @@
+# colcon / ament build artifacts
+build/
+install/
+log/
+
+# python
+__pycache__/
+*.pyc
+
+# editors / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# local scratch
+*.bak-*
+*.orig
+
+# pytest cache
+.pytest_cache/

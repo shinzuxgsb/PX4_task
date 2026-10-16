@@ -1,0 +1,22 @@
+[Unit]
+Description=链路看门狗（雷达/SLAM/EV/定高器/IMU 哪段坏了就只重启那段；解锁时只报警）
+After=px4-ev-chain.service
+Wants=px4-ev-chain.service
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+# 组件要开 /dev/ttyS4/ttyS3，必须在 dialout 组里
+SupplementaryGroups=dialout
+Environment=ROS_DOMAIN_ID=0
+# ⚠️ 必须用 process：看门狗会通过 run.sh 拉起子进程（雷达/SLAM…），
+# 若用默认的 control-group，重启看门狗会把那些子进程一起杀掉。
+KillMode=process
+ExecStart=/usr/bin/env bash /home/orangepi/px4_ws/tools/chain_watchdog.sh
+Restart=always
+RestartSec=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

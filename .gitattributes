@@ -1,0 +1,10 @@
+# 统一使用 LF：本工作区会整目录 scp 到香橙派，
+# 脚本带 CRLF 会导致 `bash: /usr/bin/env^M` 之类的错误。
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.dtb binary
+*.dtbo binary
+*.png binary
+*.jpg binary
+*.pdf binary

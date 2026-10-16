@@ -1,0 +1,9 @@
+# Micro-XRCE-DDS Agent 的串口配置（装到 /etc/default/microxrce-agent）
+#
+# 飞控 DDS 已确认走 ttyS6（UA5/TELEM3，双向都通）：
+#   - /dev/ttyS1 飞控另一路，只通单方向（已弃用）
+#   - /dev/ttyS3 定高器 TOFsense-M —— 千万别改到这里
+#   - /dev/ttyS6 飞控 DDS ✅
+#   - /dev/ttyS7 板载蓝牙
+XRCE_DEV=/dev/ttyS6
+XRCE_BAUD=921600

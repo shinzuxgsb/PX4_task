@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>tofsense_m</name>
+  <version>0.1.0</version>
+  <description>
+    Nooploop TOFSense-M 激光定高器串口驱动（NLink 协议）。
+    读 /dev/ttySx @921600，解析 NLink_TOFSense_M_Frame0 帧，
+    发布高度（sensor_msgs/Range）。
+  </description>
+  <maintainer email="team@todo.todo">px4 drone team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

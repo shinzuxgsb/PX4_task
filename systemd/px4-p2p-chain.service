@@ -1,0 +1,67 @@
+[Unit]
+Description=参考件方案链路（onboard_ws 照搬：定高 ttyS3→ttyS1 + EV odom + A→B 任务）
+Documentation=file:/home/orangepi/px4_ws/docs/CHANGELOG.md
+# 与 px4-ev-chain.service（我们原来那套）**互斥**：同一时刻只能启用一个
+# 2026-10-14：**去掉 After=time-sync.target**（它等于"等 NTP 同步上了才起链"）。
+#   实测（同一块板子，四次上电）本单元启动的单调时刻分别是 35.3s / 35.6s / 172.9s / 283.1s，
+#   而 "Finished Wait Until Kernel Time Synchronized" 分别落在 35.25s / 35.53s / 172.89s / 283.04s
+#   —— 每次都只差 0.02~0.03 s，即链路的启动时刻 100% 由公网 NTP 应答速度决定
+#   （journal 里 ntp.ubuntu.com 十几分钟后还在 "Timed out waiting for reply"）。
+#   现在改成"有界等待"：run_p2p.sh 里最多等 NTP_WAIT_MAX（默认 15 s，可设 0 关掉）就照常起链。
+#   代价：万一 NTP 在链跑起来之后才校正时钟（大跳变），cartographer 可能崩一次 —— 由 launch 的
+#   respawn 兜底（2026-10-08 那次根因就是时间跳变）。根除办法是换 RTC 纽扣电池 + 换个能通的 NTP 源。
+#   NTP 源见 px4_ws/systemd/timesyncd.conf.d/10-ntp-cn.conf。
+After=network-online.target
+Wants=network-online.target
+Conflicts=px4-ev-chain.service
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+User=orangepi
+Group=orangepi
+# 需要 /dev/ttyS3(TOF) / dev/ttyS1(MAVLink 输出) /dev/ttyS4(雷达) /dev/ttyS6(DDS)
+SupplementaryGroups=dialout
+Environment=ROS_DOMAIN_ID=0
+Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/orangepi/px4_ws/tools/fastdds_udp_only.xml
+# 2026-10-14：**只有一套启动形态**（用户要求取消 pos/start/bench 之分）：
+#   run_p2p.sh 默认且唯一 = 感知链（雷达 + cartographer + 定高 + EV 桥），
+#   不再拉起任务状态机 / Offboard 桥 ⇒ 一条 /fmu/in/offboard_* 都不发。
+#   原来那个 drop-in（`/etc/systemd/system/px4-p2p-chain.service.d/10-mode.conf`，
+#   Environment=P2P_MODE=pos）已删除，不再需要 —— 见 CHANGELOG 2026-10-14（续 9）。
+# 2026-10-15：**飞行期间冻结校时**（链路要的是"不跳变的时间"，不是"正确的时间"）。
+#   背景：链路现在上电约 24 s 就起跑，而 NTP 首次同步可能拖到 t≈36 s ~ 246 s；那一刻的时钟步进
+#   会把已经跑起来的 cartographer 直接打死（2026-10-15 16:08:29 实测 SIGABRT，见 CHANGELOG 补记 1；
+#   2026-10-08 也是同一模式）。根因是 RTC 停走 + timesyncd 把开机时钟"恢复到记录时间戳"，
+#   于是开机时钟差十几分钟到十几小时，之后 NTP 一同步就是一次大跳变。
+#   做法：起链前**停掉** systemd-timesyncd，停链后再启起来立刻校正。
+#     · 只 `stop` 不 `set-ntp false`：后者会 *disable* 单元 —— 万一断电时正好在"飞行中"，
+#       下次开机就没有 NTP 了。`stop` 是非持久的，重启后它自己会回来（已确认 enabled）。
+#     · `+` 前缀=以 root 跑（systemctl 需要）；`-` 前缀=失败不阻塞起链（失败仍记进 journal）。
+#     · 效果：飞行期间时钟"错但稳定"，绝不会中途跳变；停链后时间戳马上回到现实。
+#     · 已知副作用：飞行期间日志/录像的墙钟时间可能是错的（bag 内相对时间线正常）；
+#       `anacron`/`kerneloops` 这两个等 time-sync.target 的单元在"起链时还没同步上"的情况下
+#       会一起等下去（无害，不阻塞 multi-user）。
+#     · ⚠️ 待台架验证：飞控侧 epoch↔hrt 换算在 ROS 时钟差十几小时时是否照常（`cs_ev_*` / `xy_valid`）。
+#     · 回滚：删掉下面两行 + `sudo systemctl daemon-reload`。
+ExecStartPre=-+systemctl stop systemd-timesyncd
+ExecStopPost=-+systemctl start systemd-timesyncd
+ExecStart=/usr/bin/env bash /home/orangepi/px4_ws/run_p2p.sh
+ExecStop=/usr/bin/env bash /home/orangepi/px4_ws/run_p2p.sh stop
+# 参考件的做法是"节点挂了就让 systemd 整栈重启"（他们的 launch 里 cartographer 退出即 Shutdown）。
+# 想改成"绝不自动重启"：把下面两行注释掉即可（当前保留，与参考件一致）。
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+# 2026-10-15：**停链不再拖 60 秒、也不再留残留**。原来用默认 SIGTERM + 杀整个 cgroup，
+#   而 python 节点 / `ros2 bag record` 不理会 SIGTERM ⇒ 卡满 TimeoutStopSec=60 才 SIGKILL；
+#   重启期间就出现"旧实例 + 新实例"并存（17:19 事故：两套 cartographer/EV 桥 → 两个 EV 发布者
+#   → 飞控收到两个地图原点的位置 → 位置冻住/漂 → 炸机）。
+#   SIGINT 才是 ROS 节点的正常退出路径（等同 Ctrl-C：写完 bag metadata、干净析构、几秒内退）。
+#   实测：重启从 63 秒 → 几秒，且 `pgrep -c cartographer_node` 停完立刻归零。
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

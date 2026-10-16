@@ -1,0 +1,60 @@
+# p_to_p_mission —— A→B 点对点任务（PX4 Offboard 版）
+# 逻辑来自 onboard_ws/p_to_p_flight_px4（用户 2026-10-12 发的参考件），移植改动见
+# D:\px4无人机\CHANGELOG.md（2026-10-12）与 AGENTS.md §11。
+#
+# 与参考件的差异：
+#   1. 删掉 position_pid_controller / uart_to_stm32_node 两节 —— 那是 STM32 串口那套，本机不用；
+#   2. terminal_behavior 默认 hold（到 B 悬停，不自动降落）；要落地再显式改 guided_land_handoff；
+#   3. 高度来源 /height（Int16，厘米）由 p_to_p_px4 的 px4_offboard_bridge 从飞控
+#      local_position.dist_bottom 发布（这条路参考件就是这么用的，本机 /tofsense/height 不动）；
+#   4. 任务包线按本机事故史收紧（半径 1.5 m / 高度 1.2 m / 各段超时 20 s）。
+p_to_p_mission:
+  ros__parameters:
+    # 坐标系与传感器话题
+    map_frame: map
+    body_frame: laser_link
+    height_topic: /height
+
+    # B 点定义方式：relative_body(相对起飞瞬间机头系，X 前/Y 左) | relative_map | absolute
+    target_mode: relative_body
+    b_offset_x_cm: 100.0        # 起飞点正前方 1 m
+    b_offset_y_cm: 0.0
+    b_x_cm: 250.0               # 仅 absolute 模式用
+    b_y_cm: -250.0
+
+    cruise_height_cm: 50.0      # 巡航高度（相对起飞点），先给最保守的 0.5 m
+    keep_takeoff_yaw: true
+    target_yaw_deg: 0.0
+
+    # 到 B 之后：hold=悬停（首次联调必须用这个）
+    #             guided_land_handoff=限速下降到地面基线上方约 4 cm，再交还 PX4 Land
+    terminal_behavior: hold
+    pre_descent_hold_sec: 3.0
+    active_descent_rate_cm_s: 10.0
+    active_descent_max_lead_cm: 5.0
+    ground_height_max_cm: 20.0
+    native_land_handoff_margin_cm: 4.0
+    landing_height_cm: 20.0     # 旧 land 模式用
+
+    position_tolerance_cm: 15.0
+    height_tolerance_cm: 12.0
+    yaw_tolerance_deg: 8.0
+    reached_stable_sec: 1.0
+    sensor_timeout_sec: 0.5
+    px4_status_timeout_sec: 1.2
+    stop_output_max_height_cm: 25.0
+    abort_descent_on_obstacle: false   # 本机没装面阵激光
+    route_choice: 3
+    update_rate_hz: 10.0
+
+    # 任务包线（节点本地限制，不是飞控 geofence）
+    task_guard_enabled: true
+    task_radius_cm: 150.0
+    task_max_height_cm: 120.0
+    takeoff_timeout_sec: 20.0
+    travel_timeout_sec: 20.0
+    hold_timeout_sec: 20.0
+    descent_timeout_sec: 30.0
+
+    # 必须遥控器解锁并切 Offboard，任务才动（与参考件 final_position 一致）
+    require_rc_offboard: true

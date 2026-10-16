@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>px4_takeoff_land</name>
+  <version>0.1.0</version>
+  <description>
+    原地起飞 / 悬停 / 原地降落 任务节点（PX4 Offboard，走 uXRCE-DDS）。
+    补上 px4_bridge 缺失的任务状态机：解锁、切 Offboard、起飞、悬停、
+    下降、交还 PX4 自动降落。
+  </description>
+  <maintainer email="team@todo.todo">px4 drone team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>px4_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

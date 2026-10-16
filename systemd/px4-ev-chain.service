@@ -1,0 +1,33 @@
+[Unit]
+Description=PX4 定点飞行链路（DDS Agent + 雷达 + SLAM + 定高器 + EV 桥）
+Documentation=file:/home/orangepi/px4_ws/README.md
+# 2026-10-10：曾加 time-sync.target —— 由 systemd-time-wait-sync 负责"等到 NTP 同步"。
+# 2026-10-14：**去掉 time-sync.target**，与 px4-p2p-chain.service 保持一致（同一原因：
+#   实测上电到链路启动被拖成 35 s ~ 283 s，完全由公网 NTP 应答速度决定 —— 见 CHANGELOG
+#   2026-10-14 补记 8 与 px4-p2p-chain.service 里的长注释）。run.sh 里本来就有
+#   NTP_WAIT_MAX（默认 20 s）的有界兜底等待，这里不再重复挂硬依赖。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=orangepi
+Group=orangepi
+SupplementaryGroups=dialout
+Environment=ROS_DOMAIN_ID=0
+# 2026-10-10：**整条链强制走 UDP 传输**（绕开 FastDDS 同机共享内存的坑）。
+#   证据：新开的进程经常"ros2 topic list 看得见、hz/echo 收不到"（SHM 通路建不起来）；
+#   而且组件偶发"进程活着但输出停住"（cartographer 卡死、EV 桥停发）——
+#   怀疑就是发布线程卡在坏掉的 SHM 通路上。代价只是 CPU 略高。
+Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/orangepi/px4_ws/tools/fastdds_udp_only.xml
+# run.sh fly 已改造成"事件驱动 + 并行启动"：不再固定 sleep 25s/15s，
+# 而是等各自就绪（雷达日志握手 + 话题频率），正常启动约 15~25 秒。
+ExecStart=/usr/bin/env bash /home/orangepi/px4_ws/run.sh fly
+ExecStop=/usr/bin/env bash /home/orangepi/px4_ws/run.sh stop
+# 正常 15~25 秒；给足余量，超时说明卡住（systemd 会杀整个 cgroup，日志见 journalctl -u px4-ev-chain）
+TimeoutStartSec=180
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

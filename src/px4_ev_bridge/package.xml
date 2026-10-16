@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>px4_ev_bridge</name>
+  <version>0.2.0</version>
+  <description>
+    外部视觉桥接：雷达 2D SLAM 给水平位置/速度/航向，TOFSense-M 定高器给垂直高度，
+    合成一条 vehicle_visual_odometry 喂给 PX4 EKF2。
+  </description>
+  <maintainer email="team@todo.todo">px4 drone team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>px4_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

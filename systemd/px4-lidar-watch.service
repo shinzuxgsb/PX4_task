@@ -1,0 +1,20 @@
+[Unit]
+Description=雷达看门狗（/scan 没数据就重启雷达驱动；解锁时只报警）
+# 和飞行链路一起跑；链路没起来时本服务会一直报"没数据"但不重启（未解锁）
+After=px4-ev-chain.service
+Wants=px4-ev-chain.service
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+# 驱动要打开 /dev/ttyS4，必须在 dialout 组里
+SupplementaryGroups=dialout
+Environment=ROS_DOMAIN_ID=0
+ExecStart=/usr/bin/env bash /home/orangepi/px4_ws/tools/lidar_watchdog.sh
+Restart=always
+RestartSec=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

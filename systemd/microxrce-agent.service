@@ -1,0 +1,28 @@
+[Unit]
+Description=Micro-XRCE-DDS Agent (PX4 uXRCE-DDS bridge, serial)
+After=network.target
+# 飞控没插上时不必反复重启整个系统，失败就退出，systemd 会按 Restart 重试
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# 默认值必须和 agent.sh 一致：飞控 DDS 走 ttyS6（UA5/TELEM3）。
+# ⚠️ ttyS3 是定高器 TOFsense-M 的口，填这里会把定高器顶掉。
+Environment=XRCE_DEV=/dev/ttyS6
+Environment=XRCE_BAUD=921600
+# 串口和波特率在 /etc/default/microxrce-agent 里覆盖（放在 Environment= 之后，
+# 保证同名变量以配置文件为准）。
+EnvironmentFile=-/etc/default/microxrce-agent
+# 需要 root 才能开串口（也可改用 dialout 组 + User=orangepi）
+ExecStart=/usr/local/bin/MicroXRCEAgent serial --dev ${XRCE_DEV} -b ${XRCE_BAUD} -v 4
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/microxrce-agent.log
+StandardError=append:/var/log/microxrce-agent.log
+
+[Install]
+WantedBy=multi-user.target
+
+# 说明：本单元默认保持 disabled。整条飞行链路（含 DDS Agent）由
+# px4-ev-chain.service -> run.sh fly -> agent.sh 拉起；两个都启用会同时起两个
+# Agent 抢同一路串口。只有在不使用 px4-ev-chain.service 时才单独 enable 本单元。

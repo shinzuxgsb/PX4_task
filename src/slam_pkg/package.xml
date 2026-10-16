@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>slam_pkg</name>
+  <version>0.1.0</version>
+  <description>
+    2D SLAM 建图方案之一：slam_toolbox（online async）的配置与启动文件。
+    另一套方案是 carto_pkg（cartographer）。
+  </description>
+  <maintainer email="team@todo.todo">px4 drone team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

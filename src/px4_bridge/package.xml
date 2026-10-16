@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>px4_bridge</name>
+  <version>0.1.0</version>
+  <description>
+    PX4 uXRCE-DDS 桥接：把上位机的 /target_velocity(cm/s, deg/s) 转成
+    PX4 Offboard 的速度指令(/fmu/in/trajectory_setpoint)，并把飞控状态
+    翻译回 /height、/is_st_ready 等话题（沿用旧工程的话题约定）。
+  </description>
+  <maintainer email="team@todo.todo">px4 drone team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>px4_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

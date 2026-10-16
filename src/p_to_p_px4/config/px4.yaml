@@ -1,0 +1,67 @@
+# p_to_p_px4 —— PX4 uXRCE-DDS Offboard 桥（移植自 onboard_ws/p_to_p_flight_px4）
+#
+# 移植改动：
+#   1. 删掉 cartographer_odometry_bridge 一节 —— 本机 EV 由 px4_ev_bridge 负责，
+#      两处同时发 /fmu/in/vehicle_visual_odometry 是禁止的；
+#   2. land_on_mission_complete 默认 false（参考件是 true），自动降落要显式开；
+#   3. 其余数值保持参考件原值。
+px4_offboard_bridge:
+  ros__parameters:
+    # 安全默认值：bench_only=true 时绝不向 PX4 发布控制或模式命令
+    bench_only: true
+    control_mode: position
+    map_frame: map
+    body_frame: base_link
+    output_rate_hz: 20.0
+    px4_timeout_sec: 0.7
+    pose_timeout_sec: 0.5
+    command_timeout_sec: 0.35
+    mission_start_grace_sec: 1.0
+    minimum_prestream_sec: 1.0
+    max_horizontal_speed_mps: 0.30
+    max_vertical_speed_mps: 0.25
+    max_yaw_rate_rad_s: 0.436332313
+    # 遥控器解锁、遥控器切入 Offboard 之后，节点才开始跑任务
+    auto_start_on_offboard: true
+    allow_mode_command: false      # 不代飞控切模式
+    allow_land_command: false      # 默认不发 NAV_LAND
+    land_on_mission_complete: false
+    land_on_fault: false
+    require_preflight_checks: true
+    require_native_reset_monitor: false
+    target_system: 1
+    target_component: 1
+
+# 2026-10-13：照搬参考件的感知层 EV（odom→base_link → /fmu/in/vehicle_visual_odometry）。
+# 相对参考件的**唯一**偏离：垂直分量用本机定高器 /tofsense/height（用户决定不接 ttyS1 那根线），
+# 因此飞控参数保持我们原来的 EKF2_EV_CTRL=15（含垂直位）+ EKF2_HGT_REF=3(Vision)。
+cartographer_odometry_bridge:
+  ros__parameters:
+    # launch 里显式覆盖为 true。
+    enabled: false
+    odom_frame: odom
+    body_frame: base_link
+    publish_rate_hz: 30.0
+    pose_timeout_sec: 0.25
+    publish_velocity: true
+    publish_to_px4: true
+    body_velocity: false
+    publish_yaw: true
+    scan_timeout_sec: 0.3
+    velocity_window_sec: 0.25
+    max_velocity_mps: 1.5
+    velocity_filter_alpha: 0.35
+    xy_stddev_m: 0.08
+    yaw_stddev_rad: 0.13962634
+    velocity_stddev_mps: 0.15
+    reset_jump_m: 0.75
+    reset_jump_yaw_rad: 0.78539816
+    # ---- 本机改动：EV 高度来自本机定高器 ----
+    use_height: true
+    height_topic: /tofsense/height
+    height_timeout_sec: 0.25
+    height_sigma_m: 0.15
+    # ---- 本机改动：位姿帧（ned 才会让 EKF 的 yaw_align=true，
+    #      见 EKF/ev_yaw_control.cpp:141(NED)/157(FRD)；frd = 参考件原样）----
+    pose_frame: ned
+    transport_label: DDS

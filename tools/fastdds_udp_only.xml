@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  2026-10-09：给「新开一个终端/会话」跑检查工具用的 FastDDS profile。
+
+  背景：这台香橙派上多次重启链路之后，新开的 ROS 2 会话会出现
+      「ros2 topic list 能看到话题、ros2 topic hz/echo 却一个数据都收不到」
+  的怪现象（今晚 21:20 又遇到一次）。同机通信默认走 FastDDS 的共享内存（SHM）
+  传输，/dev/shm 里积了重启留下的旧段落时，新参与者会建立不起数据通路，
+  但发现（UDP 组播）还是好的 —— 表现就是"看得见、收不到"。
+
+  用法（只影响你这一个进程，不影响正在跑的链路）：
+      export FASTRTPS_DEFAULT_PROFILES_FILE=~/px4_ws/tools/fastdds_udp_only.xml
+      ros2 topic hz /scan
+
+  tools/preflight.sh 会自动设置这个变量。
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_only</transport_id>
+      <type>UDPv4</type>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="udp_only_participant" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>udp_only</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>
