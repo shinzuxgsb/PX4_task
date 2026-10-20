@@ -1,0 +1,23 @@
+[Unit]
+Description=MAVLink 定位链（bluesea2 + Cartographer + mavlink_bridge/ODOMETRY）
+# 不依赖 Wi-Fi/NTP：无网络时按离线飞行模式立即启动。
+# 有 Wi-Fi 的调试启动由 start_mavlink_ws.sh 等待 NTP。
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+SupplementaryGroups=dialout
+WorkingDirectory=/home/orangepi
+Environment=HOME=/home/orangepi
+Environment=ROS_DOMAIN_ID=0
+ExecStart=/bin/bash /home/orangepi/mavlink_ws/start_mavlink_ws.sh
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

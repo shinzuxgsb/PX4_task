@@ -1,0 +1,42 @@
+planner_target_adapter:
+  ros__parameters:
+    input_position_cmd_topic: /drone_0_planning/pos_cmd
+    input_pose_topic: /ego_planner/next_target
+    input_path_topic: /ego_planner/reference_path
+    output_topic: /target_position
+    output_mode: position
+
+    # Prefer Ego Planner's PositionCommand output in real integration.
+    prefer_position_cmd_input: true
+
+    # If true, read nav_msgs/Path and sample one future index.
+    # If false, read geometry_msgs/PoseStamped directly.
+    prefer_path_input: false
+    path_sample_index: 5
+
+    # Convert planner output from m/rad to controller input cm/deg.
+    use_input_z: true
+    default_height_cm: 120.0
+    use_fixed_yaw: true
+    fixed_yaw_deg: 0.0
+    republish_period_sec: 0.2
+
+    # Sparse sampling for dense curve points from planner output.
+    enable_sparse_sampling: true
+    min_delta_xy_cm: 3.0
+    min_delta_z_cm: 2.0
+    min_delta_yaw_deg: 4.0
+
+    # Adaptive thresholds: keep more points in turns, sparsify straights.
+    enable_adaptive_sampling: false
+    # When trajectory_id changes, drop stale targets from previous trajectory.
+    enable_trajectory_switch_reset: true
+    adaptive_scale_min: 0.45
+    adaptive_scale_max: 1.6
+    adaptive_turn_low_deg: 3.0
+    adaptive_turn_high_deg: 20.0
+
+    # Keep only one active target: choose nearest forward candidate from queued samples.
+    enable_nearest_waypoint_priority: false
+    nearest_waypoint_forward_only: true
+    nearest_waypoint_switch_hysteresis_cm: 0.0

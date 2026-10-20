@@ -1,0 +1,55 @@
+# 蓝海光电 LDS-50C-R（串口款）驱动参数
+#
+# 这颗雷达是原来 LDS-50C-E（网口/UDP 款）的替换件，接在香橙派 5 Max 的
+# UART4 上（40pin 排针 19=TXD / 23=RXD，pinmux 走 UART4_M2），
+# 设备节点 /dev/ttyS4。
+#
+# 注意：UART4 默认被设备树关闭，需要加载 rk3588-uart4-m2 这个 overlay 才会
+# 出现 /dev/ttyS4。做法见 docs/串口雷达改造.md 与 tools/enable_ttyS4.sh。
+#
+# 与网口版 udp_lidar.yaml 的关键差异（不要照抄网口版的这几个值）：
+#   type/port/baud  连接方式本身
+#   reversed        串口款逆时针(uart)，网口款顺时针；抄反会把地图镜像
+#   max_dist        与 cartographer fly.lua 的 max_range=8 对齐
+#   hard/soft_resample  串口款开启角度重采样，网口款关闭
+bluesea_node:
+  ros__parameters:
+  #ROS2#
+    frame_id: "laser_link"
+    scan_topic: "scan"
+    cloud_topic: "cloud"
+  #DATA#
+    number: 1
+    # -1 == ANYONE：不按设备号过滤。这套雷达在网口模式下就是用 -1 跑通的，
+    # 串口模式沿用，避免因设备号对不上而静默丢包。
+    dev_id: -1
+    raw_bytes: 3
+    output_360: true
+    output_scan: true
+    output_cloud2: false
+    with_angle_filter: false
+    min_angle: -3.1415926
+    max_angle: 3.1415926
+    # mask1: "0,3.14"
+    # mask2: "-3,-2"
+    hard_resample: true
+    soft_resample: true
+    with_checksum: true
+    reversed: false
+    min_dist: 0.1
+    max_dist: 8.0
+    error_circle: 2
+    error_scale: 0.8
+#CONNECT#
+    type: "uart"
+    port: "/dev/ttyS4"
+    baud_rate: 921600
+  #GET#
+    uuid:  -1
+  #SET#
+    resample_res: 0.3
+    with_confidence: 1
+    with_smooth: 1
+    with_deshadow: 1
+    alarm_msg: 1
+    rpm: 900

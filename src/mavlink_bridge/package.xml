@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>mavlink_bridge</name>
+  <version>0.1.0</version>
+  <description>
+    PX4 MAVLink 桥接节点，替代 uart_to_stm32。保持原有 ROS 2 话题接口
+    (/height, /is_st_ready, /mission_step)，使 pid_control_pkg 与
+    activity_control_pkg 无需改动。Phase 1 只读。
+  </description>
+  <maintainer email="orangepi@todo.todo">orangepi</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

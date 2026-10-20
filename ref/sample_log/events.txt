@@ -1,0 +1,14 @@
+== 事件表 ==
+  t=1307577.5ms (  0.00s from log start)  arming_state=2
+  t=1307577.5ms (  0.00s from log start)  nav_state=POSCTL
+  t=1308589.0ms (  1.01s from log start)  nav_state=OFFBOARD
+  t=1317613.2ms ( 10.04s from log start)  nav_state=POSCTL
+  t=1307577.5ms (  0.00s from log start)  armed=1
+  t=1307597.3ms (  0.00s from log start)  landed=1
+  t=1309391.2ms (  1.79s from log start)  landed=0
+  电机: 首次>0.05 在 t=1308960.6ms, 最大 0.358, 归零在 t=1318960.1ms
+  高度: 起始 -0.10m  最高 +0.90m  结束 -0.29m (NED, 负=升高)
+  水平位置有效: 113/113 采样为 True
+  水平速度有效: 113/113 采样为 True
+
+  日志覆盖: 11.1s（飞控开机后 1307.9s ~ 1319.0s）

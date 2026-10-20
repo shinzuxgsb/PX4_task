@@ -1,0 +1,11 @@
+build/
+install/
+log/
+__pycache__/
+*.py[cod]
+*.bak-*
+*.new
+*.whl
+*.tar.gz
+.pytest_cache/
+.DS_Store

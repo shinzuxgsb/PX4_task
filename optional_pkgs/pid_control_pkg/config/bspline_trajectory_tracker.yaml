@@ -1,0 +1,25 @@
+bspline_trajectory_tracker:
+  ros__parameters:
+    control_frequency: 100.0
+    odom_timeout_sec: 0.2
+    kp_position_xy: 0.9
+    kp_position_z: 1.2
+    kv_velocity_xy: 0.45
+    kv_velocity_z: 0.6
+    ff_velocity_gain: 1.0
+    use_fixed_yaw: true
+    fixed_yaw_deg: 0.0
+    yaw_kp: 1.2
+    max_linear_velocity_cm: 40.0
+    max_vertical_velocity_cm: 35.0
+    max_yaw_velocity_deg: 30.0
+    capture_distance_threshold_m: 0.6
+    capture_search_backward_sec: 0.5
+    capture_search_forward_sec: 2.0
+    capture_sample_dt_sec: 0.02
+    heading_speed_threshold_mps: 0.1
+    enable_debug_publish: true
+    enable_debug_logs: true
+    debug_log_throttle_ms: 1000
+    world_frame_id: world
+    body_frame_id: body

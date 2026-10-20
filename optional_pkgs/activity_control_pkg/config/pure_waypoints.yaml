@@ -1,0 +1,21 @@
+route_target_publisher:
+  ros__parameters:
+    auto_start_waypoints: true
+    fastlio_world_frame: world
+    fastlio_body_frame: body
+    output_topic: /target_position
+    # Keep tight route tolerance, but require multiple stable hits before waypoint switch.
+    position_tolerance_cm: 4.0
+    yaw_tolerance_deg: 5.0
+    height_tolerance_cm: 3.0
+    reach_hold_cycles: 3
+
+    # Each row is: "x_cm, y_cm, z_cm, yaw_deg"
+    waypoints:
+      - "0.0, 0.0, 60.0, 0.0"
+      - "100.0, 0.0, 60.0, 0.0"
+      - "100.0, -100.0, 60.0, 0.0"
+      - "0.0, -100.0, 60.0, 90.0"
+      - "0.0, 0.0, 60.0, 0.0"
+      - "0.0, 0.0, 10.0, 0.0"
+      - "0.0, 0.0, 0.0, 0.0"

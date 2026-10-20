@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>my_carto_pkg</name>
+  <version>0.0.0</version>
+  <description>
+    Cartographer 2D 的配置/launch/URDF 包（来自队友交接包 03_slam/，内容逐字节未改）。
+    原机上它以 /home/orangepi/install/my_carto_pkg 存在；这里补了标准的
+    package.xml + CMakeLists.txt，只为把 launch/urdf/configuration_files 装进 share。
+  </description>
+  <maintainer email="orangepi@todo.todo">orangepi</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

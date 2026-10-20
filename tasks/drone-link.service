@@ -1,0 +1,25 @@
+[Unit]
+Description=Drone link (lidar + Cartographer SLAM + PX4 MAVLink bridge + TOFSense)
+Documentation=file:/home/orangepi/drone_link/start_link.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi
+Environment=HOME=/home/orangepi
+Environment=ROS_DOMAIN_ID=0
+ExecStart=/home/orangepi/drone_link/start_link.sh
+
+# 串口/网络异常时自动重启；ROS 各节点由 launch 统一管理
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

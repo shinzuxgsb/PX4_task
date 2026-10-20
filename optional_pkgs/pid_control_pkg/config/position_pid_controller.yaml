@@ -1,0 +1,61 @@
+position_pid_controller:
+  ros__parameters:
+    control_frequency: 100.0
+    fastlio_world_frame: world
+    fastlio_body_frame: body
+    use_height_topic_for_z: false
+    yaw_first_threshold_deg: 15.0
+    near_target_distance_cm: 25.0
+    near_yaw_lock_threshold_deg: 5.0
+    enable_target_switch_filter: false  # 串行航点由上游适配器推进，PID 默认直接接受新目标
+    min_target_switch_xy_cm: 10.0  # 新旧目标 XY 小于该值时默认不切换
+    min_target_switch_z_cm: 4.0  # 新旧目标高度差过滤阈值
+    min_target_switch_yaw_deg: 8.0  # 新旧目标航向差过滤阈值
+    switch_release_distance_cm: 25.0  # 距当前目标足够近时允许切到下一目标
+    enable_visual_fine_tune: true
+    enable_pid_debug_publish: true
+    qr_target_x: 380.0
+    qr_target_y: 170.0
+    qr_data_timeout: 0.5
+
+    navigate.kp_xy: 0.8
+    navigate.ki_xy: 0.0
+    navigate.kd_xy: 0.07
+    navigate.kp_yaw: 0.8
+    navigate.ki_yaw: 0.0
+    navigate.kd_yaw: 0.08
+    navigate.kp_z: 1.2
+    navigate.ki_z: 0.0
+    navigate.kd_z: 0.0
+    navigate.max_linear_velocity: 36.0
+    navigate.max_angular_velocity: 30.0
+    navigate.max_vertical_velocity: 40.0
+    navigate.min_linear_velocity: -36.0
+    navigate.min_angular_velocity: -30.0
+    navigate.min_vertical_velocity: -40.0
+    navigate.Xpos_tolerance: 4.0
+    navigate.Ypos_tolerance: 4.0
+    navigate.yaw_tolerance: 5.0
+    navigate.height_tolerance: 3.0
+
+    fine_tune.kp_xy: 0.3
+    fine_tune.ki_xy: 0.0
+    fine_tune.kd_xy: 0.05
+    fine_tune.kp_yaw: 0.8
+    fine_tune.ki_yaw: 0.0
+    fine_tune.kd_yaw: 0.08
+    fine_tune.kp_z: 0.3
+    fine_tune.ki_z: 0.0
+    fine_tune.kd_z: 0.0
+    fine_tune.max_linear_velocity: 6.0
+    fine_tune.max_angular_velocity: 6.0
+    fine_tune.max_vertical_velocity: 6.0
+    fine_tune.min_linear_velocity: -6.0
+    fine_tune.min_angular_velocity: -6.0
+    fine_tune.min_vertical_velocity: -6.0
+    fine_tune.Xpos_tolerance: 6.0
+    fine_tune.Ypos_tolerance: 6.0
+    fine_tune.yaw_tolerance: 5.0
+    fine_tune.height_tolerance: 6.0
+
+    max_slow_velocity: 20.0

@@ -1,0 +1,1 @@
+{"file": "log_035.ulg", "size_mb": 0.53, "duration_s": 11.0, "mtime": 1792148738, "topics": 69, "modes": {"OFFBOARD": 19, "POSCTL": 6}, "armed_pct": 100.0, "max_height_m": 0.9, "xy_valid_pct": 100.0, "v_xy_valid_pct": 100.0, "max_eph_m": 0.03, "travel_m": 0.47, "external_pose_fused": true, "ev_max_innovation": 0.071, "verdict": "正常飞行（外部定位在线）"}

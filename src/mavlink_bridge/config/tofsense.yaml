@@ -1,0 +1,18 @@
+tofsense:
+  ros__parameters:
+    # TOFSense-M 4x4，NLink 协议
+    port: "/dev/ttyS3"        # 香橙派 UART3（物理 31/33 脚）
+    baud: 921600
+    topic: "/tofsense/range"
+    frame_id: "tofsense"
+
+    # 16 个分区怎么合成一个高度值：
+    #   median = 取中位数（默认，抗单个分区跳变）
+    #   min    = 取最近的分区（对下方障碍最保守）
+    #   center = 全部有效分区的均值
+    zone_select: "median"
+
+    min_range: 0.02           # m，低于此值视为无效
+    max_range: 5.0            # m，高于此值视为无效
+    field_of_view: 0.35       # rad
+    publish_rate: 50.0        # Hz

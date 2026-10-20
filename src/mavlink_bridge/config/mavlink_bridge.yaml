@@ -1,0 +1,97 @@
+mavlink_bridge:
+  ros__parameters:
+    # ---- 链路 ----
+    port: "/dev/ttyS6"          # 香橙派 UART6（物理 11/13 脚）
+    baud: 115200                # TELEM3 实测波特率
+    source_system: 255          # 本机在 MAVLink 网络里的 sysid
+    source_component: 191       # MAV_COMP_ID_ONBOARD_COMPUTER
+    rx_timeout: 3.0             # 超过这么久没有报文就认为链路断开
+    reconnect_interval: 2.0
+
+    # ---- 上行心跳 ----
+    # 必须以 GCS 类型心跳（heartbeat_type_gcs）出现：PX4 只有在收到 GCS 心跳时
+    # 才会清掉 gcs_connection_lost，并把"解锁被拒 / 预检失败"这类 STATUSTEXT
+    # 提示发到这条链路上。关掉的话，飞控为什么不让解锁在地面上根本看不到。
+    send_heartbeat: true
+    heartbeat_rate: 1.0
+    heartbeat_type_gcs: true
+
+    # ---- TIMESYNC 应答 ----
+    # PX4 是请求方（tc1==0），我们回 {tc1: 本机时间, ts1: 回显}。
+    # 关掉的话 PX4 的 timesync 永不收敛，ODOMETRY 的时间戳会被丢弃。
+    timesync_responder: true
+
+    # ---- 外部定位注入：SLAM 里程计 -> PX4 EKF（第四步）----
+    odom_uplink_enabled: true          # 台架验证通过后可保持开启；不需要时改 false
+    odom_topic: "/odom_from_slam"      # 由 tf_to_odom 节点提供的带速度里程计
+    odom_send_rate: 30.0               # 最大上行频率（受 SLAM 源频率限制）
+    odom_world_frame: "flu"            # 世界系：flu=Cartographer odom | enu=全局ENU | ned
+    odom_body_frame: "flu"             # 机体坐标系：flu（ROS 惯例）| frd
+    odom_velocity_frame: "body"        # ROS 的 twist 在机体系（惯例）| world
+    odom_use_velocity: true
+    odom_use_orientation: true
+    odom_use_position: true
+    # 观测噪声（方差，EKF2_EV_NOISE_MD=0 时用这里的值）。
+    # 2026-10-16 调参：原来 0.01 对应 σ=10cm / 10cm·s⁻¹，比雷达 SLAM 的实际精度
+    #（厘米级）松了一个数量级，EKF 因此不敢快跟 —— 位置/速度都拖出 0.3~0.4s。
+    # 收紧到 σ≈5cm / 5cm·s⁻¹ 后，EKF 跟得更紧、环路滞后更小。
+    # 若之后出现 ev 创新量偏大或 xy_valid 掉，说明收得太紧，往回放到 0.005。
+    odom_position_noise: 0.0025        # 位置方差 m^2（σ=5cm）
+    odom_velocity_noise: 0.0025        # 速度方差 (m/s)^2（σ=5cm/s）
+    odom_angle_noise: 0.0025           # 姿态方差 rad^2（σ≈2.9°）
+    # 2D 激光没有高度信息：垂直方向方差设为极大，EKF 会自动忽略这一路观测。
+    # 建议同时把 PX4 的 EKF2_EV_CTRL 从 15 改成 13（清掉"垂直位置融合"位）。
+    odom_position_noise_z: 1.0e6       # 垂直位置方差 m^2（等于不提供）
+    odom_velocity_noise_z: 1.0e6       # 垂直速度方差 (m/s)^2（等于不提供）
+    odom_max_position_jump_m: 0.5      # 超过此跳变判为回环/重定位，丢弃并递增 reset_counter
+    # 147 适配（2026-10-17）：跳变后**停发 EV**（不递增 reset_counter），
+    # 位姿稳定这么久才恢复（回到原坐标系）或判定为真重定位（保持停发）
+    odom_jump_hold_s: 2.0
+    odom_max_data_age_s: 0.5           # 数据太旧就丢
+    odom_min_send_interval_s: 0.0      # 额外限速（0 表示只受 odom_send_rate 约束）
+
+    # ---- 测距上行：TOFSense -> DISTANCE_SENSOR -> PX4 EKF ----
+    # 走我们现有的 MAVLink 链路（TELEM3），飞控侧不需要开新口。
+    range_uplink_enabled: true
+    range_topic: "/tofsense/range"
+    range_send_rate: 25.0              # 上行频率 Hz
+    range_min_cm: 2
+    range_max_cm: 500
+    range_covariance_cm2: 4            # 上报方差（cm^2），4 = 2cm 标准差
+    range_orientation: 25              # 25 = PITCH_270，朝下测距
+    range_sensor_id: 0
+
+    # ---- Offboard 速度控制（/target_velocity -> SET_POSITION_TARGET_LOCAL_NED）----
+    # 注意：这是对飞控的**写操作**。PX4 只有在 Offboard 模式下才会执行这些 setpoint，
+    # 平时收到也只会缓存。没有新指令超过 offboard_timeout_s 就自动停发，
+    # PX4 会因此退出 Offboard（这是安全设计）。
+    offboard_enabled: true
+    velocity_topic: "/target_velocity"
+    offboard_rate: 20.0                # setpoint 发送频率 Hz
+    offboard_timeout_s: 0.5            # 指令过期时间，超时即停发
+
+    # ---- 飞控命令通道 ----
+    # 往 /px4_command 发字符串即可，支持：
+    #   arm / disarm          解锁、上锁
+    #   offboard / position / altitude / manual    切换 PX4 主模式
+    #   land                  降落
+    command_enabled: true
+    command_topic: "/px4_command"
+
+    # ---- /height ----
+    height_topic: "/height"
+    height_source: "local_position_ned"   # local_position_ned | altitude_relative | altitude_amsl
+    height_publish_rate: 20.0
+    height_offset_cm: 0.0
+
+    # ---- /is_st_ready ----
+    ready_topic: "/is_st_ready"
+    ready_mode: "armed_and_ekf"           # armed | ekf | armed_and_ekf | always
+    ready_publish_rate: 1.0
+    ekf_required_flags: 15                 # ESTIMATOR_STATUS.flags 必须包含的位
+
+    # ---- /mission_step ----
+    mission_topic: "/mission_step"
+    publish_mission_step: true
+
+    log_rate: 1.0

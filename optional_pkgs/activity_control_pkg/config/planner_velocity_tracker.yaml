@@ -1,0 +1,46 @@
+planner_velocity_tracker:
+  ros__parameters:
+    input_position_cmd_topic: /drone_0_planning/pos_cmd
+    odom_topic: /fastlio2/lio_odom_imu_high
+    ready_topic: /is_st_ready
+    output_topic: /target_velocity
+    status_topic: /planner_velocity_tracker/status
+    world_frame_id: world
+    body_frame_id: body
+    control_frequency: 60.0
+    odom_timeout_sec: 0.2
+    cmd_timeout_sec: 0.6
+
+    kp_position_x: 0.8
+    kp_position_y: 0.8
+    kp_position_z: 1.0
+    kv_velocity_x: 0.35
+    kv_velocity_y: 0.35
+    kv_velocity_z: 0.45
+    ff_velocity_gain: 1.0
+    ff_accel_time_sec: 0.0
+
+    use_fixed_yaw: true
+    fixed_yaw_deg: 0.0
+    yaw_kp: 1.1
+    yaw_ff_gain: 1.0
+    large_yaw_error_deg_threshold: 60.0
+    large_yaw_kp_scale: 1.0
+    large_yaw_ff_scale: 1.0
+
+    max_linear_velocity_cm: 35.0
+    max_vertical_velocity_cm: 28.0
+    max_yaw_velocity_deg: 30.0
+    large_yaw_velocity_deg: 30.0
+    min_publish_speed_cm: 0.5
+    enable_takeoff_height_guard: true
+    guarded_takeoff_z_cm: 60.0
+    enable_bootstrap_takeoff: true
+    bootstrap_takeoff_z_cm: 60.0
+
+    enable_trajectory_switch_reset: true
+    publish_zero_on_timeout: true
+    publish_debug_topics: true
+    enable_debug_logs: true
+    odom_velocity_in_body_frame: true
+    debug_log_throttle_ms: 1000
