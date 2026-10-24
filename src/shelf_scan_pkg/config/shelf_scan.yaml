@@ -157,6 +157,7 @@
     # 注意：start_on_takeoff=true 时 auto_start_mode 失效（那个是"上电 N 秒自动起飞"，
     # 不管飞控有没有准备好，会在地面空跑整条航线）。
     start_on_takeoff: true            # true = PX4 适配器确认 Offboard 就绪后开跑
+    takeoff_signal_confirm_frames: 1  # PX4 reliable Bool，只需 1 帧确认
     takeoff_start_mode: "sweep"       # sweep=遍历盘点（要求1）/ target=定向盘点（要求2）
     takeoff_start_delay_sec: 0.5      # 收到 takeoff_if=1 后再等多久起任务
     abort_on_takeoff_release: true    # 飞行中飞控撤回 takeoff_if → 零速度悬停回待命

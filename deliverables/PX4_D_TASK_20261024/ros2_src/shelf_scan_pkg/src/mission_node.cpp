@@ -303,6 +303,9 @@ private:
     // start_on_takeoff=true 时，机载端等这个上升沿开始跑整条航线，
     // 全程不需要遥控器、也不需要地面站点"开始任务"。
     fc_takeoff_if_topic_ = declare_parameter<std::string>("fc_takeoff_if_topic", "/fc_takeoff_if");
+    fc_takeoff_confirm_frames_ = std::max(
+      1, static_cast<int>(
+        declare_parameter<int>("takeoff_signal_confirm_frames", 1)));
     start_on_takeoff_ = declare_parameter<bool>("start_on_takeoff", false);
     takeoff_start_mode_ = declare_parameter<std::string>("takeoff_start_mode", "sweep");
     takeoff_start_delay_s_ = declare_parameter<double>("takeoff_start_delay_sec", 0.5);
@@ -452,17 +455,18 @@ private:
   }
 
   // PX4 GO 触发（由 shelf_px4_adapter 在 Offboard 就绪后发布）。
-  // 保留原版的连续 N 帧去抖，避免保持型话题在启动边界产生误触发。
+  // PX4 使用 reliable + transient_local 的 Bool，不是原匿名串口的噪声帧。
   void fcTakeoffIfCallback(const std_msgs::msg::Bool::SharedPtr message)
   {
     const bool raw = message->data != 0;
     if (raw != fc_takeoff_raw_) {
       fc_takeoff_raw_ = raw;
       fc_takeoff_same_frames_ = 1;
-      return;
+    } else if (raw != fc_takeoff_if_) {
+      ++fc_takeoff_same_frames_;
     }
     if (raw == fc_takeoff_if_) return;      // 已确认过的值，连续帧数不用再涨
-    if (++fc_takeoff_same_frames_ < 3) return;
+    if (fc_takeoff_same_frames_ < fc_takeoff_confirm_frames_) return;
     fc_takeoff_if_ = raw;
     if (raw) {
       if (start_on_takeoff_) takeoff_edge_pending_ = true;
@@ -2028,6 +2032,7 @@ private:
   bool fc_takeoff_if_ = false;          // 去抖后的 PX4 GO
   bool fc_takeoff_raw_ = false;         // 最近一帧的原始值
   int fc_takeoff_same_frames_ = 0;      // 连续相同帧数（去抖）
+  int fc_takeoff_confirm_frames_ = 1;   // PX4 Bool 默认单帧确认
   bool takeoff_edge_pending_ = false;   // 有未处理的 0→1 上升沿
   bool takeoff_starting_ = false;       // 正在等定位/高度准备起任务
   bool takeoff_armed_in_mission_ = false;  // 本趟任务期间飞控供过速度

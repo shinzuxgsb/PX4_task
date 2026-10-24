@@ -4433,10 +4433,10 @@ sudo systemctl enable  --now px4-ev-chain
   不自动覆盖已有 `groundstation.env`，也不自动覆盖 `mavlink_bridge` 配置。
 - 生成 ZIP 和 TAR.GZ 两份分发文件，并逐文件校验归档内容；未包含
   SSH 凭据、运行日志、飞控日志、盘点会话或 Python 缓存。
-- 相机左装修正后重新生成的分发包 ZIP SHA-256：
-  `8e890163394a141ba9acab7b7ec37bffd816cfb34489aa7349566105b619977e`
+- 相机左装 + GO 修复后重新生成的分发包 ZIP SHA-256：
+  `a6ef482b571134c2bf66d8cc09949be89dfa74decdadea7036274b4011df0fe7`
 - TAR.GZ SHA-256：
-  `2fb453c5865d0eca5a459100f6bb78b07756b2c21db0b654c78d162074178e74`
+  `878885ee185512eb9b0e568d370697b44699ae211a52364f45ab20cf7e17ae20`
 
 ## 2026-10-24 补记：相机/激光左装航向适配
 
@@ -4454,3 +4454,18 @@ sudo systemctl enable  --now px4-ev-chain
   需要量取后重新校准 `slot_hover_xy_cm`。
 - 队友在香橙派把地面站地址改成 `ws://10.249.102.59:8890/ws`；已恢复为
   当前控制电脑 `ws://10.249.114.28:8890/ws`。
+
+### 实测问题：地面站起飞后电机转但飞机不起飞
+
+- 现象：地面站点击起飞后 PX4 已解锁、电机转动，但任务节点日志没有
+  `PX4 GO 0→1`；约 10 秒后 PX4 自动上锁，适配器退出，WebSocket 断开。
+- 根因：PX4 适配器只发布了一帧可靠 latched Bool `/fc_takeoff_if=true`，
+  而任务节点仍沿用匿名 UART 的“连续 3 帧去抖”，因此 GO 永远没被确认。
+- 修复：
+  1. 任务节点新增 `takeoff_signal_confirm_frames: 1`，PX4 Bool 单帧确认；
+  2. 适配器在 `START_MISSION/FLIGHT` 期间以 10 Hz 持续重发 GO；
+  3. 任务启动确认超时从 12 s 缩短到 5 s，异常时更快退出。
+- 台架验证：只发一帧 `/fc_takeoff_if=true`，任务节点成功打印
+  `PX4 GO 0→1`、`任务开始` 并进入 `takeoff` 航段；全程飞控保持未解锁。
+- 正常任务结束后断链是当前的预期行为：适配器退出会让整个 launch 关闭，
+  包括 WebSocket 客户端。落地、上锁确认后再重新执行预检即可。

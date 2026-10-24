@@ -136,6 +136,19 @@ field_home_yaw_deg: -90.0
 横向安装偏差未硬编码。若相机/激光离机身中心较远，需要重新测量
 `slot_hover_xy_cm`，并在起飞前用相机十字中心检查光斑。
 
+### 点击起飞但电机只转、不升空
+
+2026-10-24 现场问题已修复。判断依据：
+
+- 正常日志必须出现 `PX4 GO 0→1` 和 `任务开始`；
+- 若只有 `shelf mission released: /fc_takeoff_if=true`，没有任务节点确认，
+  说明 GO 没有通过去抖或任务节点未收到；
+- 当前 PX4 Bool 使用 `takeoff_signal_confirm_frames: 1`，适配器飞控任务
+  期间以 10 Hz 重发 GO。
+
+任务结束并自动上锁后 WebSocket 会断开，这是因为适配器退出会关闭整个任务
+launch；随后重新执行 `shelf_preflight.sh` 即可。
+
 1. 拆桨完成预检、摄像头预览、激光开关和 `shelf_selftest`；
 2. 地面验证 `/target_velocity` 坐标变换：机头 90° 时世界 `+X` 必须变成
    机体系相应轴，PX4 不应向错误方向加速；

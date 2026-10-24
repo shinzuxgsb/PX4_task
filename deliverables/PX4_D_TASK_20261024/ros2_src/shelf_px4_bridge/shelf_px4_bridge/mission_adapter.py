@@ -77,6 +77,8 @@ class ShelfPx4Adapter(Node):
         self.last_status_s = 0.0
         self.arm_sent_s = 0.0
         self.trigger_s = 0.0
+        self.last_trigger_pub_s = 0.0
+        self.trigger_active = False
         self.mission_inactive_since = 0.0
         self.bridge_stamp = 0.0
         self.bridge = BridgeStatus("", False, False, False, None)
@@ -172,7 +174,7 @@ class ShelfPx4Adapter(Node):
             "command_delay_s": 0.8,
             "arm_timeout_s": 20.0,
             "trigger_delay_s": 0.5,
-            "mission_start_timeout_s": 12.0,
+            "mission_start_timeout_s": 5.0,
             "mission_max_duration_s": 360.0,
             "mission_inactive_grace_s": 1.0,
             "land_wait_s": 45.0,
@@ -500,7 +502,9 @@ class ShelfPx4Adapter(Node):
         self._log(f"PX4 command: {command}")
 
     def _publish_trigger(self, enabled: bool) -> None:
-        self.trigger_pub.publish(Bool(data=bool(enabled)))
+        self.trigger_active = bool(enabled)
+        self.last_trigger_pub_s = time.monotonic()
+        self.trigger_pub.publish(Bool(data=self.trigger_active))
         if enabled:
             self._log("shelf mission released: /fc_takeoff_if=true")
 
@@ -574,6 +578,13 @@ class ShelfPx4Adapter(Node):
             now = time.monotonic()
             if now - self.last_status_s >= 0.5:
                 self._publish_gs_status()
+            if (
+                self.trigger_active
+                and self.state in ("START_MISSION", "FLIGHT")
+                and now - self.last_trigger_pub_s >= 0.10
+            ):
+                self.trigger_pub.publish(Bool(data=True))
+                self.last_trigger_pub_s = now
             if now - self.last_heartbeat_s >= 1.0:
                 self.last_heartbeat_s = now
                 try:
