@@ -12,6 +12,12 @@
 > 旧的两条链都还在、只是 **disabled**：`px4-ev-chain`（10-09 的 DDS 链，`~/px4_ws`）、`px4-p2p-chain`（参考件 p_to_p，`~/px4_ws.p2p-20261016`）。
 > 切换/回滚、以及 10-16 那次「回退到 10-09 版」「飞控空中重启复盘」，见 `CHANGELOG.md` 的同名小节和 `~/mavlink_ws/ADAPT_FOR_147.md`。
 >
+> **2026-10-24 D 题移植**：`mavlink_ws` 新增 `shelf_scan_pkg`、`pid_control_pkg`、
+> `shelf_px4_bridge`，匿名 STM32 串口层换为 PX4 MAVLink/Offboard；入口为
+> `~/mavlink_ws/shelf_preflight.sh` → `~/mavlink_ws/shelf_takeoff.sh`。
+> 已在板上编译通过、自测 23/23 + 适配器测试 5/5；未解锁未实飞。
+> 详情、备份哈希和实飞硬门禁见 `CHANGELOG.md` 2026-10-24 一节。
+>
 > **2026-10-09 变更**：雷达由网口款 **`LDS-50C-E`** 换成串口款 **`LDS-50C-R`**
 > （香橙派 UART4 → `/dev/ttyS4`，需 u-boot overlay `rk3588-uart4-m2.dtbo`）。
 > 详见 `CHANGELOG.md` 的 2026-10-09 一节与 [`px4_ws/docs/串口雷达改造.md`](px4_ws/docs/串口雷达改造.md)。

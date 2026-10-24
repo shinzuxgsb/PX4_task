@@ -78,7 +78,10 @@ mavlink_bridge:
     # 任务侧已经按合速度计算；这里再做一次独立保护。
     max_horizontal_speed_cm_s: 24.0
     max_vertical_speed_cm_s: 20.0
-    max_yaw_rate_deg_s: 6.0
+    # The D route changes heading by 180 degrees between opposite shelf faces.
+    # 6 deg/s made the reference mission's 25 s transit timeout marginal.
+    # Other missions still command their own lower yaw rates.
+    max_yaw_rate_deg_s: 20.0
 
     # ---- 飞控命令通道 ----
     # 往 /px4_command 发字符串即可，支持：

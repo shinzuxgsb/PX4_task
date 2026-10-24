@@ -1,0 +1,264 @@
+# D 题（立体货架盘点无人机系统）机载端参数
+# 节点名与 launch/shelf_scan.launch.py 中的 name 对应，可直接改这里调参。
+
+/shelf_mission_node:
+  ros__parameters:
+    # ---- 场地与坐标 ----
+    # field.json 与地面站 groundstation/config/field.json 保持同一份，
+    # 改场地后两端都要更新（launch 里可用 field_config_path:= 覆盖）
+    field_config_path: ""            # 空 = 使用本包 share/shelf_scan_pkg/config/field.json
+    device_id: "drone-01"
+    firmware: "shelf-scan-1.0"
+    auto_calibrate: true             # 起飞前静止在起飞点时自动标定场地坐标系
+    field_home_x_cm: 75.0            # 标定时刻无人机所在处，对应场地起飞点
+    field_home_y_cm: 75.0
+    # ⚠ 标定基准：飞机摆在起飞点时机头朝哪儿。0 = 朝 +X（正对货架），
+    # 现在起飞朝向就是正对货架，所以这里必须是 0；摆错方向会导致整个场地坐标系转 90°。
+    field_home_yaw_deg: 0.0
+    origin_yaw_offset_deg: 0.0       # auto_calibrate=false 时使用的手工值
+    origin_x_cm: 75.0
+    origin_y_cm: 75.0
+
+    # ---- 坐标系与话题（与原工程一致） ----
+    map_frame: "map"
+    body_frame: "laser_link"
+    height_topic: "/height"
+    target_topic: "/target_position"
+    vision_mode_topic: "/vision_target_mode"
+    pillar_gate_topic: "/pillar_detection_valid"
+    publish_pillar_gate: true        # D 题不做柱检，直接放开 PID 安全门
+    gs_in_topic: "/shelf_scan/gs_in"
+    gs_out_topic: "/shelf_scan/gs_out"
+    code_topic: "/shelf_scan/code"
+    target_id_topic: "/shelf_scan/target_id"
+    laser_topic: "/shelf_scan/laser"
+    status_topic: "/shelf_scan/status"
+
+    # ---- 飞行剖面 ----
+    cruise_alt_cm: 150.0             # 要求 1-1：起飞点垂直起飞到 150±10cm
+    land_alt_cm: 8.0                 # 降落判定的最终高度（再低由飞控落地）
+    land_position_tolerance_cm: 30.0 # 2026-09-23：降落点上空到位容差（降落区半径 30cm）
+    altitude_trim_cm: 0.0            # 激光光斑高度修正：光斑高于二维码中心就填负值
+    position_tolerance_cm: 8.0       # 到位判定（悬停点）
+    height_tolerance_cm: 6.0
+    yaw_tolerance_deg: 6.0
+    scan_arrive_timeout_sec: 8.0     # 悬停点到位超时后也开始识别（保时间）
+    transit_point_timeout_sec: 25.0  # 巡航航点超时保护
+    climb_timeout_sec: 30.0
+
+    # ---- 激光与识别 ----
+    # 激光点亮时长。题目原文写"亮 0.5 秒左右"，负责老师答复"闪一下就行"。
+    # 2026-09-20：先改到 0.1s。
+    # 2026-09-26：再缩到 0.02s。因为"必须飞到过冲点才离开"之后，激光亮着的
+    #   0.1s 里飞机会继续往过冲点飞，光斑会扫出码外，看着就像"打偏了"。
+    #   为什么不用"开启后立刻关"：同一周期内开关，实际 ON 时间只有微秒级，
+    #   肉眼和评委都看不到，而且 GPIO 写 sysfs 本身就要 ~1ms。
+    # 2026-09-27：0.02s 现场看还是偏"虚"（闪得不够实在），先改到 0.06s，
+    #   现场再反馈"还想要更实在一点"，定到 0.08s(80ms)。
+    #   仍然只是一次短脉冲：打点判据是"画面 OUT→IN 上升沿"，点亮后飞机在
+    #   80ms 内只飞 3.6cm（45cm/s），光斑不会因此扫出二维码外。
+    laser_hold_sec: 0.08
+    # ---- 激光打点判据（2026-09-19 改，只影响遍历盘点的连续扫描）----
+    # 题目原文：「激光笔在被盘点的二维码范围内点亮一次（亮 0.5 秒左右）」。
+    # 改前是按"距悬停点 25cm 内记录到就点亮"，而飞机在这 0.5s 里要飞过 20cm 以上，
+    # 光斑真正压到码上时激光往往已经灭了。
+    # 现在改用"画面中心(=激光光斑)到二维码中心的厘米距离"：
+    #   进容差圆才点亮，亮 laser_hold_sec 后由主循环自动熄灭，同一个编号只点一次。
+    #   飞机照常连续飞，不停、不加时。设 false 则退回改前的触发方式。
+    laser_fire_on_align: true
+    # ---- 2026-09-25：打点改成"纯位置判据"，下面这两条是新的判据 ----
+    # 不再看画面里的 dx/dy，而是看飞机有没有走到标定的悬停点：
+    # 水平距离和高度差都进 laser_fire_tol_cm 就点亮一次。
+    # 悬停点取自 field.json 的 slot_hover_xy_cm（现场举机实测值）。
+    # 好处：完全不依赖视觉链路，不受识别确认/链路延迟影响。
+    laser_fire_tol_cm: 3.0
+    # 安全包络：目标点离货架板面至少留这么远。
+    # 原来写死 standoff-15（=55cm），但实测 A 面悬停点离板面只有 47.5cm 会被挡掉，
+    # 所以改成独立参数。40cm 仍远大于机身半径。
+    board_clearance_cm: 40.0
+    # 预览容差圆用的半径（cm）：13 ÷ √2 = 9.19，即二维码正方形的**内切圆**。
+    # 13 是外接圆（9.5×√2≈13.4）——外接圆在四个角方向会跑出码外，
+    # 除 √2 变成内切圆，保证光斑一定落在正方形码内。
+    # 注意：打点判据已经改成位置判据，这个值现在只用于预览画圈做参考。
+    laser_align_radius_cm: 9.19
+    # 2026-09-23：飞越"中间码"（A2/A5/B2/B5）时的打点半径，和 8 个目标点分开。
+    # 中间码是飞机平移时从画面里扫过去的，等它漂到正中心常常等不到
+    # （识别确认 + 链路延迟约 130ms，100cm/s 就是 13cm），所以中间码"认到就打"。
+    # 999 = 不判中心（默认）。若发现中间码光斑明显落在码外，调到 15~20 即可。
+    laser_fly_radius_cm: 999.0
+    # 2026-09-23：记录后最多再等这么久，给"对准打点"留时间窗（打完即走，不加航程）
+    laser_wait_sec: 1.5
+    # 2026-09-23：瞄准偏置——正数 = 二维码出现在画面中心**偏右**时再打激光
+    laser_aim_offset_x_cm: 0.0
+    laser_aim_offset_y_cm: 0.0
+    laser_max_on_sec: 1.2            # 安全上限：识别慢时先关激光，仍在窗口内继续识别
+    laser_settle_sec: 0.15
+    scan_code_window_sec: 2.5        # 单点识别窗口
+    scan_confirm_frames: 2           # 连续 N 帧识别到同一编号才算成功
+    scan_retries: 1                  # 识别失败重试次数
+    # 自适应微调（沿板面法线，一个点扫不到时自动挪一下再试）
+    scan_no_qr_back_cm: 10.0         # 完全没识别到 -> 远离货架 10cm（视场变大）
+    scan_multi_qr_close_cm: 5.0      # 一帧里看到多个二维码 -> 贴近货架 5cm（视场变小）
+    scan_adjust_max: 2               # 每个点最多微调几次
+    scan_adjust_limit_cm: 25.0       # 累计微调上限，防止跑偏
+    # 即扫即走：不等完全到位就开始识别；编号认出来 + 激光亮够 0.5s 立刻去下一个点
+    scan_go_enable: true
+    scan_go_trigger_cm: 15.0         # 距悬停点 15cm 内就开始识别（边走边认）
+    # 距悬停点 8cm 内（或已判定到位）就：记录坐标 + 点激光 + 立刻去下一个点。
+    # 调小（比如 5）光斑更准但会多蹭一下；调大到接近 scan_go_trigger_cm 则几乎不停，
+    # 但激光点亮瞬间光斑还没落在二维码上（会在掠过时扫过去）。
+    scan_laser_arm_cm: 8.0
+    min_code_confidence: 0.35
+
+    # ---- 遍历盘点"连续扫描"（2026-09-18 改造，只影响要求 1 遍历盘点）----
+    # true：不再飞到每个二维码点位悬停，改成"飞过点位时识别"：
+    #   · 主目标始终指向下一个点位，飞机沿一排连续飞，中间不停；
+    #   · 飞过某点位附近时，把识别到的编号记到"离当前位置最近、还没记过"的点位上，
+    #     同时点激光 0.5s、上报坐标与实测高度；
+    #   · 认到了立刻走，认不到也不等（最多 fly_dwell_sec），不再后退重扫；
+    #   · 只有换排的"水平→垂直"会等高度做到位，这是唯一必要的停顿。
+    # false：回到原来的"逐点悬停 + 自适应后退重扫"逻辑。
+    sweep_fly_through: true
+    # 这两个要成对看：handover 要 < capture，且 capture 要 < (列距 - handover)，
+    # 列距 50cm，所以 (20, 25) 这组刚好：飞过去时既认得到本点，
+    # 又不会把上一个点的编号错记到下一个点上。改动前先想清楚再改。
+    fly_handover_cm: 20.0        # 转场段提前交棒半径（比 position_tolerance_cm 大 -> 不再减速停住）
+    fly_capture_cm: 25.0         # 识别归属半径：离点位悬停点水平距离在此范围内才算这个点
+    fly_row_tol_cm: 25.0         # 识别归属：高度与点位行高差在此范围内（用来区分上下两排）
+    fly_dwell_sec: 0.6           # 单个点位最长占用时间：到点后最多再识别这么久，认不到就走
+
+    # ---- 纵向扫描（长城状路线）：一列从顶缓慢降到底，边降边识别 ----
+    vscan_speed_cm_s: 10.0       # 下降扫描速度（慢=看得清；上限取 field.json 的 vscan_speed_cm_s）
+    vscan_hold_sec: 1.5          # 识别到二维码后停住的时间（题目要求 0.5s 激光 + 稳定确认）
+    vscan_center_tol_px: 40.0    # 对准画面中心的像素容差 —— 激光打不准就是它太大
+    vscan_confirm_frames: 3      # 连续 N 帧认到同一个编号才算数
+    vscan_settle_sec: 0.1        # 识别到之后先等 0.1s 再停
+    vscan_center_timeout_sec: 3.0  # 对准超时就按当前高度记录，绝不卡住
+
+    # ---- 节拍 ----
+    # 主循环频率。打点是"每轮循环检查一次画面是否进圈"，所以这个值直接决定
+    # 打点的量化延迟（20Hz 平均 25ms / 最坏 50ms）。2026-09-25 提到 50Hz 降延迟。
+    control_frequency: 50.0
+    telemetry_frequency: 10.0        # 地面站要求 10~20Hz
+    setpoint_frequency: 10.0
+    publish_mission_complete: true   # 降落后通知 PX4 适配器接管最终 Land
+    publish_battery: false           # 没有电池回传时保持 false
+    require_height_before_start: true
+    send_ack: false
+    auto_start_mode: "none"          # none / sweep / target：无地面站时自动起飞
+    auto_start_delay_sec: 8.0
+
+    # ---- PX4 Offboard 就绪后自动开始任务 ----
+    # PX4 专用适配器先在 OFFBOARD 模式下预推零速度、解锁并等待 EKF，
+    # 然后发布 /fc_takeoff_if=true。原匿名飞控任务逻辑因此可以保持不动。
+    # 注意：start_on_takeoff=true 时 auto_start_mode 失效（那个是"上电 N 秒自动起飞"，
+    # 不管飞控有没有准备好，会在地面空跑整条航线）。
+    start_on_takeoff: true            # true = PX4 适配器确认 Offboard 就绪后开跑
+    takeoff_start_mode: "sweep"       # sweep=遍历盘点（要求1）/ target=定向盘点（要求2）
+    takeoff_start_delay_sec: 0.5      # 收到 takeoff_if=1 后再等多久起任务
+    abort_on_takeoff_release: true    # 飞行中飞控撤回 takeoff_if → 零速度悬停回待命
+    takeoff_restart_enabled: false    # 同一上电周期再飞一趟（先确认飞机已搬回起飞点）
+    # 只在这条高度以下才认为"飞机在地面、可以按当前位置重标定"，
+    # 防止空中再按一次一键起飞把整个场地坐标系带偏（D 题降落点在场地另一角）。
+    takeoff_recalibrate_max_height_cm: 15.0
+
+/shelf_gs_link_node:
+  ros__parameters:
+    device_id: "drone-01"
+    firmware: "shelf-scan-1.0"
+    # --- 与地面站的链路：三选一（可同时开，地面站侧也要对应打开）---
+    # ① 局域网 WebSocket（推荐）：地面站 runtime.json 里 websocket.enabled=true，
+    #    这里把 ws_url 改成电脑的局域网 IP（地面站启动时会打印）
+    ws_enabled: true
+    ws_url: "ws://192.168.1.100:8890/ws"
+    ws_token: ""                     # 与地面站 runtime.json 的 token 一致（留空=不校验）
+    ws_reconnect_sec: 2.0            # 断线重连间隔
+    # ② 无线数传串口（默认关；要用就 serial_enabled:=true）
+    serial_enabled: false
+    serial_port: "/dev/ttyUSB0"      # 无线数传模块接在香橙派上的串口
+    serial_baud: 115200              # 与地面站 runtime.json 保持一致
+    serial_read_timeout_ms: 200      # 串口读超时（毫秒），改小响应更快、更耗 CPU
+    # ③ 局域网 UDP（老方案，需配 tools/ws_bridge.py 或 UDP 直连）
+    udp_enabled: false               # 走 WiFi 时改 true
+    udp_bind: "0.0.0.0"
+    udp_port: 8888
+    gs_in_topic: "/shelf_scan/gs_in"
+    gs_out_topic: "/shelf_scan/gs_out"
+    link_status_topic: "/shelf_scan/link_status"
+    hello_period_sec: 2.0
+    stats_period_sec: 5.0
+
+/shelf_code_reader_node:
+  ros__parameters:
+    camera_device: "/dev/video0"
+    frame_width: 640
+    frame_height: 480
+    # 相机帧率。识别确认要连续 scan_confirm_frames 帧，所以帧率直接决定识别延迟：
+    #   2 帧 @15fps = 133ms；2 帧 @30fps = 67ms。
+    # 相机 640x480 MJPG 支持 30fps（v4l2 格式表确认过）。2026-09-25 从 15 提到 30 降延迟。
+    # 若发现识别跟不上（实际有效帧率上不去），看 ros2 topic hz /shelf_scan/code 确认。
+    fps: 30.0
+    show_preview: false
+    # ---- 电脑浏览器实时预览（MJPEG over HTTP，2026-09-19 新增）----
+    # 相机被本节点独占，所以预览由本节点直接把"画好检测框"的帧吐出去，
+    # 不额外抢占 /dev/video0，也不用 v4l2loopback。
+    # 电脑浏览器打开 http://<香橙派IP>:8080/ 即可，无需装任何软件。
+    # 没有浏览器连接时零开销（不编码、不发送），断开也不会影响识别。
+    preview_enabled: true
+    preview_port: 8080
+    preview_fps: 10.0          # 推给浏览器的帧率，与识别帧率独立；调低省 CPU 和带宽
+    preview_quality: 70        # JPEG 质量，640x480 下约 25~45KB/帧（≈2~3.5Mbps@10fps）
+    preview_draw: true         # 是否在预览画面上画检测框/编号/偏差
+    # ---- 像素 <-> 厘米标定（2026-09-19 新增）----
+    # 题目：二维码打印在 A4 纸上，尺寸 19cm×19cm 左右。
+    # 用"实测像素边长 / 物理边长"反推比例尺，从而把画面偏差换成货架面上的厘米偏差。
+    # 这样不管飞机离货架多远都成立，不需要现场拿尺子标定。
+    # 若现场实际打印尺寸不同，改这里即可（整条链路会跟着变）。
+    qr_size_cm: 19.0
+    align_radius_cm: 9.19      # 预览上容差圆的半径，应与任务节点 laser_align_radius_cm 一致（内切圆）
+    # ---- 摄像头倒装（2026-09-19 新增）----
+    # 摄像头上下颠倒时图像被旋转 180°，画面里的 dx/dy 符号全反：
+    # 容差圆判定用的是距离，不受影响；但视觉伺服和 vscan 的"偏上→抬高"都会反。
+    # 这里在读完帧立刻把整帧转回来，识别/偏差/预览/下游全部恢复成"正装"约定。
+    # 物理上下倒装通常两个都是 true；只反一个方向时单独设。
+    camera_flip_ud: true
+    camera_flip_lr: true
+    # 货架二维码：比赛用的是数字 1~24 的二维码 -> qr
+    # 如果你们贴的是 AprilTag，则用 apriltag 或 both
+    # 识别模式：比赛用的是数字 1~24 的印刷二维码 -> qr。
+    # 2026-09-25：从 both 改成 qr。both 每帧要同时跑 zbar(二维码) + aruco(AprilTag)，
+    # 而且 aruco 对同一帧跑了两遍，实测识别节点占 1.19 个核。既然用不到 AprilTag，
+    # 关掉它能省下一大块 CPU，帧率余量更大、打点延迟更低。
+    # ⚠ 如果哪天改用 AprilTag 贴纸，这里要改回 apriltag 或 both。
+    code_mode: "qr"
+    apriltag_dictionary: "DICT_APRILTAG_36h11"
+    tag_id_as_number: true           # AprilTag 的 ID 就是货物编号
+    number_min: 1
+    number_max: 24
+    publish_fine_data: true
+    code_topic: "/shelf_scan/code"
+    target_id_topic: "/shelf_scan/target_id"
+    fine_data_topic: "/fine_data"
+    capture_trigger_topic: "/shelf_scan/capture_trigger"
+    capture_service: "/shelf_scan/capture_target"
+    target_image_path: ""            # 给了图片路径就直接识别图片（要求 2-1）
+    auto_capture_target: false       # 启动后自动识别一次抽取的二维码
+    auto_capture_delay_sec: 3.0
+    capture_frames: 12
+    capture_interval_sec: 0.08
+
+/shelf_laser_node:
+  ros__parameters:
+    laser_topic: "/shelf_scan/laser"
+    control_topic: "/laser_control"  # driver=topic 时可转发到外部执行器
+    driver: "gpio"                   # topic / gpio / serial / none
+    max_on_sec: 3.0                  # 安全：连续点亮上限，超时强制关闭
+    gpio_mode: "sysfs"               # sysfs / gpiod
+    gpio_chip: "gpiochip1"
+    gpio_line: 4                     # 18脚 = GPIO1_A4（全局36 = gpiochip1 第4脚）
+    gpiod_hold_sec: 0.10
+    active_high: false               # 低电平点亮（激光模块控制端有上拉）
+    serial_port: "/dev/ttyUSB1"
+    serial_baud: 115200
+    on_command: "L1\n"
+    off_command: "L0\n"

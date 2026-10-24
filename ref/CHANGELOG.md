@@ -4283,11 +4283,11 @@ sudo systemctl enable  --now px4-ev-chain
   Cartographer 把巨大时间差当成运动，输出数百米假位姿。
 
 ### 2. 改动
-- `/etc/systemd/system/mavlink-ws-chain.service` 增加
-  `After=network-online.target systemd-time-wait-sync.service` 和
-  `Requires=systemd-time-wait-sync.service`。
-- `~/mavlink_ws/start_mavlink_ws.sh` 增加 `wait_for_ntp()`：
-  每 1 s 检查 `NTPSynchronized`，最多等 300 s；未同步则拒绝启动。
+- 去掉 `mavlink-ws-chain.service` 对
+  `systemd-time-wait-sync.service` 的硬依赖，避免离线飞行时链路无法启动。
+- `start_mavlink_ws.sh` 增加条件门控：`wlan0` 已连接（调试模式）时等待
+  `NTPSynchronized=yes`，最多 300 s；未连接 Wi-Fi 时按离线飞行模式立即启动。
+- 离线启动后不要中途连接 Wi-Fi；如需连网调试，先停链、同步 NTP 后重启。
 - 备份：`mavlink-ws-chain.service.bak-20261020`、
   `start_mavlink_ws.sh.bak-20261020`。
 
@@ -4295,4 +4295,70 @@ sudo systemctl enable  --now px4-ev-chain
 - 重启日志：`等待 NTP 时间同步 ...` → `NTP 已同步，继续启动链路。`
 - 扫描 15.15 Hz；EV 预热完成；`ekf_ok=True flags=0x1af`，
   高度 9 cm，ODOMETRY 934 帧，跳变 0。
+- 首次 NTP 同步约 155.9 s；首次 `ekf_ok=True` 约 15 s after gate；
+  总开机到可用约 2 分 51 秒。主要耗时是 Wi-Fi 关联，不是 NTP 查询。
 - `amphi.lua`、飞控参数、Cartographer 配置均未改动。
+
+## 2026-10-24 D 题任务移植到 PX4（机载端代码就绪，未实飞）
+
+### 1. 需求与来源
+- 用户要求把 2024 电赛 D 题匿名飞控版本的货架盘点逻辑移植到当前 PX4 飞机；
+  激光雷达继续使用 `/dev/ttyS4`，摄像头使用 `/dev/video0`。
+- 源码基线：`D:\24电赛d题\drone_d_ws`（该目录文档记录其机载端在 2026-09-30
+  已逐文件核对一致）。匿名飞机旧 IP `10.23.87.97` 本次不在当前网段，未能重新登机
+  比对；实飞前如该板 IP 已变化，仍应再做一次双端源码哈希核对。
+- 未修改匿名飞机代码，所有 PX4 改动落在
+  `D:\px4无人机\mavlink_ws_git_repo_20261020\repo`。
+
+### 2. 移植内容
+- 新增 `shelf_scan_pkg`：保留场地几何、两排弓字形 12 点位航线、二维码识别、
+  激光上升沿打点、地面站协议、避障规划和 23 项机载自测。
+- 新增 `pid_control_pkg`：保留位置 PID，但新增 `velocity_output_frame: body`；
+  将原匿名飞控版的地图系 `(vx,vy)` 通过当前 yaw 旋转成机体系 FLU，
+  再接现有 `mavlink_bridge`，避免 PX4 前后/左右方向发反。
+- 新增 `shelf_px4_bridge`：代替 `uart_to_stm32` 和匿名 `takeoff_if` 逻辑，
+  负责预检、零速度 Offboard 预推、GO 后自动解锁、发布 `/fc_takeoff_if`、
+  监控 SLAM/高度/任务状态，结束后发送 PX4 Land 并等待上锁。
+- 启动方式改为与现有已验证流程一致的两段式：
+  `~/mavlink_ws/shelf_preflight.sh` → `~/mavlink_ws/shelf_takeoff.sh`；
+  中止为 `~/mavlink_ws/shelf_abort.sh`。
+- `mavlink_bridge.yaml` 的 `max_yaw_rate_deg_s` 从 6 提到 20；
+  6°/s 时 D 航线 A→B 面约 180° 转向会逼近 25 s 转场超时。
+- 摄像头默认 `/dev/video0`；激光笔沿用排针 18 脚，Linux 映射为
+  `gpiochip1` 第 4 脚（全局 GPIO 36），低电平点亮。新增
+  `99-orange-pi-gpio.rules`，将 gpiochip 权限交给已有的 `dialout` 组。
+
+### 3. 香橙派环境改动
+- 安装编译依赖：`libopencv-dev`、`libzbar-dev`、`ros-humble-angles`、`gpiod`。
+- 安装 `/etc/udev/rules.d/99-orange-pi-gpio.rules`；本次没有改飞控固件或参数。
+- 改动前完整源码备份：
+  `~/backups/20261024_before_d_mission_px4_port/mavlink_ws-src-before-d-port.tar.gz`
+  SHA-256 `87579b98423ff4dff277bbeb02f885192abfc1e51b96c237469cbce56ff00ad4`。
+
+### 4. 验证
+- 香橙派上 `colcon build --symlink-install --packages-select
+  shelf_scan_pkg pid_control_pkg shelf_px4_bridge`：3 包成功；
+  最终增量编译无 compiler warning/error。
+- `shelf_selftest`：23/23 通过，原 12 点位航线长度 1094.5 cm、
+  预计用时 71.5 s 与匿名飞机地面站黄金数据一致。
+- `shelf_px4_bridge` Python 单测：5/5 通过。
+- 地面非接管启动：`/dev/video0` 摄像头、MJPEG 8080、激光节点、任务节点、
+  位置 PID、PX4 适配器全部启动且无残留；PX4 当前为 `AUTO`、未解锁，
+  因此预检按设计停在 `PREFLIGHT WAIT: PX4 mode is AUTO, select OFFBOARD`。
+- 重启 `mavlink-ws-chain` 后 `map -> odom -> base_link` TF 恢复，
+  说明此前“新会话看不到 TF”是旧链路网络切换后的 DDS 会话问题。
+- **未解锁、未起飞、未做激光真实点亮和二维码现场识别验收。**
+
+### 5. 回滚
+- 机载端顶层文件和三个新包可直接由上述 tar 包恢复；
+- 本机 Git 分支为 `mavlink_ws`，本次提交可用 `git revert <commit>` 回滚；
+- `99-orange-pi-gpio.rules` 若不需要，可恢复到本次安装前的同名
+  `.bak-20261024`（如存在），再执行
+  `sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=gpio`。
+
+### 6. 实飞前硬门禁
+- 必须在 QGC/遥控器把 PX4 放在 **OFFBOARD**，确认未解锁、EKF 正常；
+- 必须按当前 PX4 飞机的相机、激光和雷达安装位置重新核对 `field.json`
+  悬停点与激光光斑，不能直接认为匿名飞机实测坐标完全复用；
+- 先拆桨验证 `/target_velocity` 的机体系 X/Y 方向、激光 GPIO 和摄像头预览，
+  再做单点短航线，最后才跑整趟 12 点扫描。
