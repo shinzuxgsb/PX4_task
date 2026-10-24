@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PX4 货架盘点地面站</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">PX4</span>
+      <div>
+        <h1>货架盘点地面站</h1>
+        <p id="fieldName">正在读取场地...</p>
+      </div>
+    </div>
+    <div class="top-status">
+      <span class="status-chip" id="linkState"><i></i>链路</span>
+      <span class="status-chip" id="ekfState"><i></i>EKF</span>
+      <span class="status-chip" id="flightState"><i></i>未解锁</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="left-column">
+      <article class="card camera-card">
+        <div class="card-head">
+          <div>
+            <h2>实时相机</h2>
+            <p id="cameraLabel">机载摄像头 /dev/video0</p>
+          </div>
+          <button class="icon-button" id="btnCameraReload" title="重新连接相机">↻</button>
+        </div>
+        <div class="camera-frame">
+          <img id="cameraFeed" alt="机载相机实时画面" />
+          <div class="camera-empty" id="cameraEmpty">
+            <strong>等待相机画面</strong>
+            <span id="cameraHint">请先启动机载预检</span>
+          </div>
+          <span class="camera-badge" id="cameraStatus">未连接</span>
+          <span class="camera-crosshair"></span>
+        </div>
+      </article>
+
+      <article class="card flight-card">
+        <div class="card-head">
+          <div>
+            <h2>飞行任务</h2>
+            <p id="px4Message">等待 PX4 状态</p>
+          </div>
+          <span class="pill" id="px4Phase">UNKNOWN</span>
+        </div>
+
+        <div class="telemetry-grid">
+          <div><span>任务状态</span><strong id="missionState">待命</strong></div>
+          <div><span>飞行模式</span><strong id="flightMode">--</strong></div>
+          <div><span>电池</span><strong id="battery">--</strong></div>
+          <div><span>相对高度</span><strong id="altitude">--</strong></div>
+          <div><span>位置 X / Y</span><strong id="position">--</strong></div>
+          <div><span>盘点进度</span><strong id="progress">0 / 12</strong></div>
+        </div>
+
+        <div class="primary-actions">
+          <button class="primary action-large" id="btnStart" disabled>
+            <span>起飞并开始盘点</span>
+            <small id="startHint">等待预检通过</small>
+          </button>
+          <button class="secondary action-large" id="btnLand">返航降落</button>
+        </div>
+
+        <div class="secondary-actions">
+          <div class="target-control">
+            <input id="targetNo" type="number" min="1" max="24" value="1" />
+            <button id="btnTarget">定向盘点</button>
+          </div>
+          <button id="btnPlanSweep" class="quiet">预览航线</button>
+          <button id="btnReset" class="quiet">清空结果</button>
+          <button id="btnEstop" class="danger">立即降落</button>
+        </div>
+
+        <p class="safety-note">
+          起飞按钮只有在 PX4 已进入 OFFBOARD、保持未解锁、EKF 正常且机载预检通过后才会启用。
+        </p>
+      </article>
+    </section>
+
+    <section class="right-column">
+      <article class="card map-card">
+        <div class="card-head">
+          <div>
+            <h2>场地与航线</h2>
+            <p id="routeMeta">尚未规划航线</p>
+          </div>
+          <span class="pill" id="routeTitle">航线</span>
+        </div>
+        <div class="map-wrap">
+          <canvas id="map"></canvas>
+        </div>
+      </article>
+
+      <div class="bottom-grid">
+        <article class="card results-card">
+          <div class="card-head">
+            <div>
+              <h2>实时盘点结果</h2>
+              <p>相机识别与激光打点结果</p>
+            </div>
+            <div class="head-actions">
+              <a class="text-link" href="/api/export.csv" download>导出 CSV</a>
+              <button id="btnSave" class="quiet">保存</button>
+            </div>
+          </div>
+          <div class="results-layout">
+            <div class="table-wrap">
+              <table id="records">
+                <thead><tr><th>编号</th><th>点位</th><th>高度</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="slot-grid" id="slotGrid"></div>
+          </div>
+          <div class="query-row">
+            <input id="queryNo" type="number" min="1" max="24" placeholder="货物编号" />
+            <button id="btnQuery" class="quiet">查询</button>
+          </div>
+          <div class="query-result" id="queryResult">输入编号查询货物位置</div>
+        </article>
+
+        <article class="card event-card">
+          <div class="card-head">
+            <div>
+              <h2>运行事件</h2>
+              <p>预检、起飞、识别和链路消息</p>
+            </div>
+          </div>
+          <div class="event-log" id="log"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>PX4 · MAVLink Offboard</span>
+    <span id="footerInfo">正在连接地面站服务...</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@ No arm or Offboard command is sent in dry-run mode.
 from __future__ import annotations
 
 import collections
+import json
 import math
 import os
 import signal
@@ -36,6 +37,7 @@ from std_msgs.msg import (
     Empty,
     Float32MultiArray,
     Int16,
+    Int32,
     String,
     UInt8,
 )
@@ -72,6 +74,7 @@ class ShelfPx4Adapter(Node):
         self.last_heartbeat_s = 0.0
         self.last_zero_s = 0.0
         self.last_land_command_s = 0.0
+        self.last_status_s = 0.0
         self.arm_sent_s = 0.0
         self.trigger_s = 0.0
         self.mission_inactive_since = 0.0
@@ -97,6 +100,8 @@ class ShelfPx4Adapter(Node):
         self.mission_active = False
         self.mission_active_seen = False
         self.mission_complete = False
+        self.go_requested = False
+        self.gs_message = ""
 
         latched = QoSProfile(
             depth=10,
@@ -108,6 +113,15 @@ class ShelfPx4Adapter(Node):
         )
         self.command_pub = self.create_publisher(String, "/px4_command", 10)
         self.trigger_pub = self.create_publisher(Bool, "/fc_takeoff_if", latched)
+        self.gs_status_pub = self.create_publisher(
+            String, "/shelf_scan/gs_out", 50
+        )
+        self.takeoff_mode_pub = self.create_publisher(
+            String, "/shelf_scan/takeoff_mode", 10
+        )
+        self.target_id_pub = self.create_publisher(
+            Int32, "/shelf_scan/target_id", latched
+        )
         self.create_subscription(Odometry, "/odom_from_slam", self._on_odom, 10)
         self.create_subscription(Int16, "/height", self._on_height, 10)
         self.create_subscription(
@@ -120,6 +134,9 @@ class ShelfPx4Adapter(Node):
         )
         self.create_subscription(
             Bool, "/mission_active", self._on_mission_active, latched
+        )
+        self.create_subscription(
+            String, "/shelf_scan/gs_in", self._on_gs_command, 50
         )
 
         self._publish_trigger(False)
@@ -283,6 +300,75 @@ class ShelfPx4Adapter(Node):
         self.mission_active_seen = True
         self.mission_active = bool(msg.data)
 
+    def _on_gs_command(self, msg: String) -> None:
+        try:
+            payload = json.loads(str(msg.data))
+        except (TypeError, ValueError):
+            self.get_logger().warn("ignored malformed ground-station command")
+            return
+        if str(payload.get("type", "")).lower() != "cmd":
+            return
+        command = str(payload.get("cmd", "")).lower()
+        if command in ("px4_start", "start_sweep", "takeoff_start"):
+            if not self.flight_enabled:
+                self.gs_message = "adapter is in dry-run mode"
+                self._publish_gs_status()
+                return
+            if self.state != "WAIT_GO":
+                self.gs_message = f"takeoff request rejected in state {self.state}"
+                self._log(f"ground station: {self.gs_message}")
+                self._publish_gs_status()
+                return
+            mode = str(payload.get("mode", "sweep")).lower()
+            if command == "start_sweep":
+                mode = "sweep"
+            if mode not in ("sweep", "target"):
+                self.gs_message = f"unsupported mission mode: {mode}"
+                self._publish_gs_status()
+                return
+            target_no = payload.get("no", payload.get("target_no"))
+            if mode == "target":
+                try:
+                    target_no = int(target_no)
+                except (TypeError, ValueError):
+                    self.gs_message = "target mode requires a cargo number"
+                    self._publish_gs_status()
+                    return
+                self.target_id_pub.publish(Int32(data=target_no))
+            self.takeoff_mode_pub.publish(String(data=mode))
+            self.go_requested = True
+            self.gs_message = f"takeoff accepted: mode={mode}"
+            self._log(f"ground station: {self.gs_message}")
+            self._publish_gs_status()
+        elif command in ("land", "stop_and_land"):
+            self.gs_message = "ground station requested landing"
+            self._request_land(self.gs_message)
+        elif command in ("estop", "emergency_land"):
+            self.gs_message = "ground station requested immediate landing"
+            self._request_land(self.gs_message)
+
+    def _publish_gs_status(self) -> None:
+        payload = {
+            "type": "px4_status",
+            "state": self.state,
+            "mode": self.bridge.mode,
+            "armed": bool(self.bridge.armed or self.ready == 1),
+            "ekf_ok": bool(self.bridge.ekf_ok),
+            "link_ok": bool(self.bridge.link_ok),
+            "battery_pct": self.bridge.battery_pct,
+            "ready": int(self.ready),
+            "mission_active": bool(self.mission_active),
+            "error": self.failure_reason,
+            "message": self.gs_message,
+            "takeoff_available": (
+                self.flight_enabled and self.state == "WAIT_GO"
+            ),
+        }
+        self.gs_status_pub.publish(
+            String(data=json.dumps(payload, ensure_ascii=False))
+        )
+        self.last_status_s = time.monotonic()
+
     def _on_rosout(self, msg: Log) -> None:
         if msg.name != "mavlink_bridge":
             return
@@ -315,8 +401,12 @@ class ShelfPx4Adapter(Node):
         return self._tof_fresh() and self.tof_cm is not None and self.tof_cm <= 12.0
 
     def _ready_fresh(self) -> bool:
-        return self.ready_seen and self._fresh(
-            self.ready_stamp, self.ready_timeout_s
+        # The bridge publishes ready=0 only on state change (latched), while
+        # ready=1 is refreshed at 1 Hz. Treat a received zero as the stable
+        # disarmed state; require freshness only while armed/ready.
+        return self.ready_seen and (
+            self.ready == 0
+            or self._fresh(self.ready_stamp, self.ready_timeout_s)
         )
 
     def _bridge_fresh(self) -> bool:
@@ -448,9 +538,11 @@ class ShelfPx4Adapter(Node):
         self.done = True
         self.exit_code = int(code)
         self.failure_reason = reason
+        self.state = "FINISHED"
         self._remove_if_exists(self.ready_file)
         self._remove_if_exists(self.go_file)
         self._remove_if_exists(self.heartbeat_file)
+        self._publish_gs_status()
         if code == 0:
             self._log(f"adapter finished: {reason or 'complete'}")
         else:
@@ -480,6 +572,8 @@ class ShelfPx4Adapter(Node):
             return
         try:
             now = time.monotonic()
+            if now - self.last_status_s >= 0.5:
+                self._publish_gs_status()
             if now - self.last_heartbeat_s >= 1.0:
                 self.last_heartbeat_s = now
                 try:
@@ -560,8 +654,13 @@ class ShelfPx4Adapter(Node):
                     self._log(f"PREFLIGHT DEGRADED: {details}; returning to checks")
                     self._set_state("WAIT_STABLE")
                     return
-                if not self.wait_for_go or os.path.exists(self.go_file):
+                if (
+                    not self.wait_for_go
+                    or self.go_requested
+                    or os.path.exists(self.go_file)
+                ):
                     self._remove_if_exists(self.go_file)
+                    self.go_requested = False
                     self._send_command("arm")
                     self.arm_sent_s = now
                     self._set_state("ARMING")

@@ -91,6 +91,23 @@ LASER_ACTIVE_HIGH=true ~/mavlink_ws/shelf_preflight.sh
 测试期间保持激光朝向安全方向，并确保没有执行 `shelf_preflight.sh` 或
 `shelf_takeoff.sh`。脚本发现激光节点或任务进程在运行时会拒绝执行。
 
+## 网页地面站
+
+在控制电脑运行：
+
+```text
+groundstation_px4\run_groundstation.bat
+```
+
+浏览器打开 `http://127.0.0.1:8765/`。地面站同时监听
+`0.0.0.0:8890/ws`，相机默认读取
+`http://10.249.123.10:8080/stream`。
+
+飞机端预检会读取 `~/mavlink_ws/config/groundstation.env` 自动连接电脑。
+当网页显示“机载已连接”“EKF 正常”“可以起飞”且飞机仍显示“未解锁”时，
+可点击“起飞并开始盘点”。地面站发送的是起飞请求，机载适配器仍会重新执行
+全部安全门检查。
+
 ## 首次实飞顺序
 
 1. 拆桨完成预检、摄像头预览、激光开关和 `shelf_selftest`；

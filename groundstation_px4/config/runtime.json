@@ -1,0 +1,48 @@
+{
+  "links": {
+    "websocket": {
+      "enabled": true,
+      "bind": "0.0.0.0",
+      "port": 8890,
+      "path": "/ws",
+      "token": "",
+      "idle_timeout_sec": 45.0
+    },
+    "udp": {
+      "enabled": false,
+      "bind": "0.0.0.0",
+      "port": 8888
+    },
+    "tcp": {
+      "enabled": false,
+      "bind": "0.0.0.0",
+      "port": 8889
+    },
+    "serial": {
+      "enabled": false,
+      "port": "COM9",
+      "baud": 115200
+    },
+    "mock": {
+      "enabled": false,
+      "time_scale": 1.0
+    }
+  },
+  "led_output": {
+    "enabled": false,
+    "port": "COM5",
+    "baud": 115200,
+    "on_cmd": "LED1\n",
+    "off_cmd": "LED0\n"
+  },
+  "http": {
+    "host": "127.0.0.1",
+    "port": 8765
+  },
+  "camera": {
+    "enabled": true,
+    "url": "http://10.249.123.10:8080/stream",
+    "label": "机载摄像头 /dev/video0"
+  },
+  "audio_beep": true
+}

@@ -17,6 +17,8 @@
 > `~/mavlink_ws/shelf_preflight.sh` → `~/mavlink_ws/shelf_takeoff.sh`。
 > 已在板上编译通过、自测 23/23 + 适配器测试 5/5；未解锁未实飞。
 > 详情、备份哈希和实飞硬门禁见 `CHANGELOG.md` 2026-10-24 一节。
+> 网页地面站位于 `mavlink_ws/groundstation_px4/`，支持相机实时画面和
+> `WAIT_GO` 后一键起飞；实机链路已验证到预检就绪，未点击起飞。
 >
 > **2026-10-09 变更**：雷达由网口款 **`LDS-50C-E`** 换成串口款 **`LDS-50C-R`**
 > （香橙派 UART4 → `/dev/ttyS4`，需 u-boot overlay `rk3588-uart4-m2.dtbo`）。

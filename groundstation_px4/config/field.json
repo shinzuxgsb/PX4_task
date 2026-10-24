@@ -1,0 +1,123 @@
+{
+  "version": 2,
+  "name": "赛区场地 500cm x 400cm",
+  "note": "坐标由题目图1 标定（用起飞点/降落点校核，误差<1cm）。如现场有出入，请修改本文件中的 board_x / y_from / y_to。",
+  "area": {
+    "w": 500.0,
+    "h": 400.0,
+    "wall_margin": 5.0
+  },
+  "takeoff": {
+    "x": 75.0,
+    "y": 75.0,
+    "yaw": 0.0,
+    "size": 40.0
+  },
+  "landing": {
+    "x": 425.0,
+    "y": 325.0,
+    "yaw": 90.0,
+    "radius": 30.0
+  },
+  "safety_margin_cm": 40.0,
+  "racks": [
+    {
+      "id": "S1",
+      "axis": "y",
+      "board_x": 150.0,
+      "y_from": 105.0,
+      "y_to": 305.0,
+      "thickness": 5.0,
+      "faces": [
+        {
+          "id": "A",
+          "normal": [
+            -1.0,
+            0.0
+          ],
+          "row_delta_cm": [
+            -5.0,
+            -5.0
+          ],
+          "y_offset_cm": -3.0,
+          "standoff_delta_cm": -7.0
+        },
+        {
+          "id": "B",
+          "normal": [
+            1.0,
+            0.0
+          ],
+          "row_delta_cm": [
+            0.0,
+            -3.0
+          ],
+          "y_offset_cm": 0.0,
+          "standoff_delta_cm": 0.0
+        }
+      ]
+    }
+  ],
+  "rack_length_cm": 200.0,
+  "rack_height_cm": 100.0,
+  "board_bottom_cm": 70.0,
+  "slot_rows_cm": [
+    155.0,
+    115.0
+  ],
+  "slot_cols_offset_cm": [
+    -50.0,
+    0.0,
+    50.0
+  ],
+  "slot_numbering": "viewer_rowmajor",
+  "_note_slot_hover": "现场实测的悬停点 [x,y]（或 [x,y,z] 带高度覆盖）：举着飞机让激光打到二维码中心，读地面站上飞机当时的位置。中间列按两侧插值。2026-09-25 二次实飞后调整：B 面整体 x-7（也往前靠 7cm）；B6 高度改 115（原来太下面了，少降 5cm）。注意规划器 face_columns() 按 hover_y 精确分组列，同一列的上下两排 y 必须相同。",
+  "slot_hover_xy_cm": {
+    "A1": [100.0, 260.0],
+    "A2": [100.0, 208.5],
+    "A3": [100.0, 157.0],
+    "A4": [100.0, 260.0, 107.0],
+    "A5": [100.0, 208.5],
+    "A6": [100.0, 154.0],
+    "B1": [221.0, 253.0],
+    "B2": [220.0, 197.0],
+    "B3": [219.0, 146.0],
+    "B4": [221.0, 253.0],
+    "B5": [220.0, 197.0],
+    "B6": [219.0, 142.0, 115.0]
+  },
+  "_note_fly_overshoot": "飞行过冲 [dx,dy,dz]：只加在'飞机往哪飞'上，不影响点位坐标、上报的货物坐标、以及按 hover_y 分列。用于补'航段末端飞机提前停住、差几厘米到不了码'。",
+  "slot_fly_overshoot_cm": {
+    "A1": [0.0, 10.0, 0.0],
+    "B3": [0.0, 15.0, 0.0],
+    "B1": [0.0, 10.0, 0.0]
+  },
+  "standoff_cm": 70.0,
+  "cruise_alt_cm": 150.0,
+  "buffer": {
+    "x": 75.0,
+    "y": 350.0,
+    "yaw": 90.0
+  },
+  "vscan_top_cm": 150.0,
+  "vscan_floor_cm": 70.0,
+  "vscan_speed_cm_s": 10.0,
+  "laser_dwell_s": 0.5,
+  "speeds": {
+    "horizontal": 45.0,
+    "vertical": 50.0,
+    "yaw": 90.0,
+    "land": 30.0
+  },
+  "timing": {
+    "climb_s": 4.0,
+    "settle_s": 1.5,
+    "scan_s": 1.2,
+    "land_s": 6.0
+  },
+  "time_limits_s": {
+    "sweep": 270.0,
+    "target": 180.0
+  },
+  "aisle_switch_penalty_cm": 120.0
+}

@@ -4364,3 +4364,39 @@ sudo systemctl enable  --now px4-ev-chain
   悬停点与激光光斑，不能直接认为匿名飞机实测坐标完全复用；
 - 先拆桨验证 `/target_velocity` 的机体系 X/Y 方向、激光 GPIO 和摄像头预览，
   再做单点短航线，最后才跑整趟 12 点扫描。
+
+## 2026-10-24 补记：PX4 专用网页地面站
+
+### 1. 新增内容
+- 新增 `mavlink_ws/groundstation_px4/`，在原 D 题地面站基础上重做为简洁
+  单页界面；保留场地/航线/盘点结果/查询/CSV，新增机载相机实时 MJPEG、
+  PX4 预检状态、飞行模式、电量、解锁状态。
+- 网页主按钮“起飞并开始盘点”在 PX4 状态为 `WAIT_GO` 时启用；地面站发送
+  `px4_start`，由 `shelf_px4_adapter` 再复核预检、解锁、切换/确认 Offboard、
+  最后才对任务节点放行。地面站不能绕过机载端安全门。
+- 支持遍历盘点和定向盘点。地面站通过 `/shelf_scan/takeoff_mode` 指定本次
+  任务模式，不再使用会提前把任务节点置为 Arming 的匿名 `start_route`。
+- 机载端新增 `/shelf_scan/gs_out` 的 `px4_status` 心跳和
+  `/shelf_scan/gs_in` 的 `px4_start/land/estop` 指令处理。
+- 默认地面站电脑 IP 写入 `mavlink_ws/config/groundstation.env`：
+  `ws://10.249.114.28:8890/ws`；IP 变化时只需改这一行。
+
+### 2. 验证
+- 网页模拟模式完整跑完 12 点遍历盘点，3 个地面站后端单测通过。
+- 实机端 `mavlink-ws-chain` active，地面站 WebSocket 已连接香橙派
+  `10.249.123.10`；PX4=OFFBOARD、未解锁、EKF 正常、电量 89%。
+- 实际验证进入 `WAIT_GO`，网页按钮可用；相机画面为 640×480、浏览器无
+  JS 报错。未点击起飞按钮，未解锁。
+- 通过网页发送未解锁状态下的 `land` 请求，机载适配器收到并安全退出
+  启动流程，证明地面站→WebSocket→ROS 下行链路已连通。
+- `maps -> odom -> base_link` 与实时相机均在预检中正常。
+
+### 3. 使用入口
+- Windows：`mavlink_ws/groundstation_px4/run_groundstation.bat`
+- 演示：`run_demo.bat`
+- 页面：`http://127.0.0.1:8765/`
+- 机载预检：`~/mavlink_ws/shelf_preflight.sh`
+
+### 4. 回滚
+- 删除 `groundstation_px4/` 不影响机载任务；
+- 机载恢复上一提交即可回到只有命令行起飞流程的版本。
