@@ -4433,7 +4433,24 @@ sudo systemctl enable  --now px4-ev-chain
   不自动覆盖已有 `groundstation.env`，也不自动覆盖 `mavlink_bridge` 配置。
 - 生成 ZIP 和 TAR.GZ 两份分发文件，并逐文件校验归档内容；未包含
   SSH 凭据、运行日志、飞控日志、盘点会话或 Python 缓存。
-- ZIP SHA-256：
-  `92132e7307e4e5f652458a0c607e77f8e2a1439f3733d4189ad55c0ecf3c2529`
+- 相机左装修正后重新生成的分发包 ZIP SHA-256：
+  `8e890163394a141ba9acab7b7ec37bffd816cfb34489aa7349566105b619977e`
 - TAR.GZ SHA-256：
-  `8651f56f60a60b47755888d42e57176ac883fee601695089e4ce8a637dc5e01a`
+  `2fb453c5865d0eca5a459100f6bb78b07756b2c21db0b654c78d162074178e74`
+
+## 2026-10-24 补记：相机/激光左装航向适配
+
+- 现场硬件：摄像头和激光笔位于机头左侧，光轴相对机头左偏约 90°。
+- `shelf_mission_node` 新增参数 `camera_yaw_offset_deg`，正值表示光轴向左：
+  - 航线和点位中的 yaw 继续定义为“相机/激光需要看向哪里”；
+  - 下发给 PX4 前自动换算成机头朝向 `光轴朝向 - 安装角`；
+  - 起飞、转场、扫描、纵向扫描、返航和降落航向全部使用同一换算。
+- `field.json` 的 `takeoff_yaw=0` 继续表示相机朝场地 +X；因此默认
+  `camera_yaw_offset_deg=90` 时，起飞点机头标定角
+  `field_home_yaw_deg=-90`，即机头右转 90°。
+- 若实际安装角不是 90°，只需改 `camera_yaw_offset_deg`，并把
+  `field_home_yaw_deg` 设为 `field.takeoff.yaw - camera_yaw_offset_deg`。
+- 横向/前后平移距离尚未提供，本次没有猜测硬编码；如机位偏差明显，
+  需要量取后重新校准 `slot_hover_xy_cm`。
+- 队友在香橙派把地面站地址改成 `ws://10.249.102.59:8890/ws`；已恢复为
+  当前控制电脑 `ws://10.249.114.28:8890/ws`。

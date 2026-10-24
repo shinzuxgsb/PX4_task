@@ -38,6 +38,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("start_gs_link", default_value="false"),
         DeclareLaunchArgument("ws_url", default_value="ws://127.0.0.1:8890/ws"),
         DeclareLaunchArgument("cruise_alt_cm", default_value="150.0"),
+        DeclareLaunchArgument("camera_yaw_offset_deg", default_value="90.0"),
         DeclareLaunchArgument("require_battery", default_value="false"),
         DeclareLaunchArgument("minimum_battery_pct", default_value="25"),
         DeclareLaunchArgument("require_tof_ground", default_value="true"),
@@ -75,6 +76,7 @@ def generate_launch_description() -> LaunchDescription:
             "start_gs_link": LaunchConfiguration("start_gs_link"),
             "ws_url": LaunchConfiguration("ws_url"),
             "cruise_alt_cm": LaunchConfiguration("cruise_alt_cm"),
+            "camera_yaw_offset_deg": LaunchConfiguration("camera_yaw_offset_deg"),
         }.items(),
     )
     adapter = Node(

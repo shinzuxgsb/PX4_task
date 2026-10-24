@@ -190,6 +190,13 @@ private:
     pos_tol_cm_ = declare_parameter<double>("position_tolerance_cm", 8.0);
     z_tol_cm_ = declare_parameter<double>("height_tolerance_cm", 6.0);
     yaw_tol_deg_ = declare_parameter<double>("yaw_tolerance_deg", 6.0);
+    // Positive = camera/laser optical axis points left of the aircraft nose.
+    // Route leg yaw values describe the optical aiming direction; PX4 receives
+    // the corresponding body heading after this offset is removed.
+    camera_yaw_offset_deg_ = declare_parameter<double>("camera_yaw_offset_deg", 90.0);
+    RCLCPP_INFO(
+      get_logger(), "相机/激光安装角：相对机头 %+.1fdeg（正数=向左）",
+      camera_yaw_offset_deg_);
     arrive_timeout_s_ = declare_parameter<double>("scan_arrive_timeout_sec", 8.0);
     transit_timeout_s_ = declare_parameter<double>("transit_point_timeout_sec", 25.0);
     climb_timeout_s_ = declare_parameter<double>("climb_timeout_sec", 30.0);
@@ -272,7 +279,11 @@ private:
     auto_calibrate_ = declare_parameter<bool>("auto_calibrate", true);
     field_home_x_cm_ = declare_parameter<double>("field_home_x_cm", field_.takeoff.x);
     field_home_y_cm_ = declare_parameter<double>("field_home_y_cm", field_.takeoff.y);
-    field_home_yaw_deg_ = declare_parameter<double>("field_home_yaw_deg", field_.takeoff_yaw);
+    // field.json 的 takeoff_yaw 表示相机/激光光轴方向。飞机机头必须
+    // 再右转 camera_yaw_offset_deg（安装角为左偏时）。
+    field_home_yaw_deg_ = declare_parameter<double>(
+      "field_home_yaw_deg",
+      normalizeDeg(field_.takeoff_yaw - camera_yaw_offset_deg_));
     origin_yaw_offset_deg_ = declare_parameter<double>("origin_yaw_offset_deg", 90.0);
     origin_x_cm_ = declare_parameter<double>("origin_x_cm", field_.takeoff.x);
     origin_y_cm_ = declare_parameter<double>("origin_y_cm", field_.takeoff.y);
@@ -902,7 +913,9 @@ private:
     // 起飞段：地面站给的第一个点是地面点(z=0)，只在原地垂直爬升到最后一个点的高度
     if (leg.type == "takeoff") {
       const Vec3 & point = leg.points.back();
-      publishSetpoint(point, leg.has_yaw ? leg.yaw : field_.takeoff_yaw);
+      const double target_body_yaw = cameraYawToBodyYaw(
+        leg.has_yaw ? leg.yaw : field_.takeoff_yaw);
+      publishSetpoint(point, target_body_yaw);
       const bool reached =
         has_height_ && std::fabs(point.z + altitude_trim_cm_ - height_cm_) <= z_tol_cm_;
       if (reached) {
@@ -975,14 +988,16 @@ private:
   {
     const Vec3 base = leg.points.empty() ? leg.hover : leg.points.back();
     const Vec3 hover = adjustedScanPoint(leg, base);
-    publishSetpoint(hover, leg.has_yaw ? leg.yaw : pose_yaw_field_deg_);
+    const double target_body_yaw = leg.has_yaw ?
+      cameraYawToBodyYaw(leg.yaw) : pose_yaw_field_deg_;
+    publishSetpoint(hover, target_body_yaw);
 
     const Vec2 hover_map = transform_.fieldToMap(hover.x, hover.y);
     const double dx = hover_map.x - pose_x_cm_;
     const double dy = hover_map.y - pose_y_cm_;
     const double distance = std::hypot(dx, dy);
     const double dz = std::fabs(hover.z + altitude_trim_cm_ - height_cm_);
-    const double dyaw = std::fabs(normalizeDeg(leg.yaw - pose_yaw_field_deg_));
+    const double dyaw = std::fabs(normalizeDeg(target_body_yaw - pose_yaw_field_deg_));
     const double leg_elapsed = now().seconds() - leg_start_time_s_;
     const bool height_ok = !has_height_ || dz <= z_tol_cm_;
     const bool yaw_ok = dyaw <= yaw_tol_deg_;
@@ -1213,7 +1228,9 @@ private:
   void executeScanLegFlyThrough(const RouteLeg & leg)
   {
     const Vec3 base = leg.points.empty() ? leg.hover : leg.points.back();
-    publishSetpoint(base, leg.has_yaw ? leg.yaw : pose_yaw_field_deg_);
+    const double target_body_yaw = leg.has_yaw ?
+      cameraYawToBodyYaw(leg.yaw) : pose_yaw_field_deg_;
+    publishSetpoint(base, target_body_yaw);
 
     const SlotInfo * self = field_.slot(leg.slot);
     // 到位判据必须按"本航段实际飞向的目标点"（= hover + 现场过冲）算，
@@ -1360,7 +1377,11 @@ private:
     if (!laser_fire_on_align_) return;
     if (leg_index_ >= route_.legs.size()) return;
     const RouteLeg & leg = route_.legs[leg_index_];
-    if (leg.has_yaw && std::fabs(normalizeDeg(leg.yaw - pose_yaw_field_deg_)) > yaw_tol_deg_) {
+    const double target_body_yaw = leg.has_yaw ?
+      cameraYawToBodyYaw(leg.yaw) : pose_yaw_field_deg_;
+    if (leg.has_yaw &&
+      std::fabs(normalizeDeg(target_body_yaw - pose_yaw_field_deg_)) > yaw_tol_deg_)
+    {
       laserResetInside();              // 掉头途中，圈内状态作废
       return;
     }
@@ -1425,7 +1446,8 @@ private:
   {
     const Vec3 top = leg.points.empty() ? leg.hover : leg.points.front();
     const Vec3 stop = leg.points.size() >= 2 ? leg.points.back() : leg.hover;
-    const double yaw = leg.has_yaw ? leg.yaw : pose_yaw_field_deg_;
+    const double yaw = leg.has_yaw ?
+      cameraYawToBodyYaw(leg.yaw) : pose_yaw_field_deg_;
 
     if (!vscan_active_) {
       vscan_active_ = true;
@@ -1734,15 +1756,23 @@ private:
   {
     if (leg.type == "return" || leg.type == "land") {
       const RouteLeg * previous = previousYawLeg();
-      return previous != nullptr ? previous->yaw : pose_yaw_field_deg_;
+      return previous != nullptr ?
+        cameraYawToBodyYaw(previous->yaw) : pose_yaw_field_deg_;
     }
     // 巡航途中提前转向盘点朝向，减少到位后的转向等待
     for (std::size_t i = leg_index_ + 1; i < route_.legs.size(); ++i) {
-      if (route_.legs[i].has_yaw) return route_.legs[i].yaw;
+      if (route_.legs[i].has_yaw) return cameraYawToBodyYaw(route_.legs[i].yaw);
       break;
     }
-    if (leg.has_yaw) return leg.yaw;
+    if (leg.has_yaw) return cameraYawToBodyYaw(leg.yaw);
     return pose_yaw_field_deg_;
+  }
+
+  // Route leg yaw is the direction the camera/laser must look. The airframe
+  // has to point camera_yaw_offset_deg away from that direction.
+  double cameraYawToBodyYaw(double camera_yaw_deg) const
+  {
+    return normalizeDeg(camera_yaw_deg - camera_yaw_offset_deg_);
   }
 
   double current_heightForPlanning() const
@@ -2010,6 +2040,7 @@ private:
   double pos_tol_cm_ = 8.0;
   double z_tol_cm_ = 6.0;
   double yaw_tol_deg_ = 6.0;
+  double camera_yaw_offset_deg_ = 90.0;
   double arrive_timeout_s_ = 8.0;
   double transit_timeout_s_ = 25.0;
   double climb_timeout_s_ = 30.0;

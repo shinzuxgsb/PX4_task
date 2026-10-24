@@ -1,7 +1,7 @@
 PX4 D TASK execution package
 version=2026-10-24
 source_branch=mavlink_ws
-source_commit=69c9980
+package_revision=2-camera-left-90
 camera=640x480 MJPG
 groundstation_fps=30
 qr_detection_fps=30

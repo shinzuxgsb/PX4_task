@@ -119,6 +119,23 @@ groundstation_px4\run_groundstation.bat
 
 ## 首次实飞顺序
 
+### 相机/激光安装角
+
+当前摄像头和激光笔位于机头左侧，光轴相对机头约左转 90°：
+
+```yaml
+camera_yaw_offset_deg: 90.0
+field_home_yaw_deg: -90.0
+```
+
+`field.json`、航线和地面站中的 yaw 仍表示相机/激光需要看向的方向；
+任务节点会自动把机头转到“光轴方向 - 90°”。如果实际安装角不同，只改
+`camera_yaw_offset_deg`，并让 `field_home_yaw_deg` 等于
+`field.takeoff.yaw - camera_yaw_offset_deg`。
+
+横向安装偏差未硬编码。若相机/激光离机身中心较远，需要重新测量
+`slot_hover_xy_cm`，并在起飞前用相机十字中心检查光斑。
+
 1. 拆桨完成预检、摄像头预览、激光开关和 `shelf_selftest`；
 2. 地面验证 `/target_velocity` 坐标变换：机头 90° 时世界 `+X` 必须变成
    机体系相应轴，PX4 不应向错误方向加速；

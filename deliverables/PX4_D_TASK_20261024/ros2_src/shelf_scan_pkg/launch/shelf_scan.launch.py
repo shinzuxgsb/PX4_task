@@ -50,6 +50,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("ws_url", default_value="ws://127.0.0.1:8890/ws"),
         DeclareLaunchArgument("ws_token", default_value=""),
         DeclareLaunchArgument("cruise_alt_cm", default_value="150.0"),
+        DeclareLaunchArgument("camera_yaw_offset_deg", default_value="90.0"),
     ]
 
     params = LaunchConfiguration("shelf_params_file")
@@ -63,6 +64,9 @@ def generate_launch_description() -> LaunchDescription:
         "start_on_takeoff": True,
         "takeoff_start_mode": "sweep",
         "publish_mission_complete": True,
+        "camera_yaw_offset_deg": ParameterValue(
+            LaunchConfiguration("camera_yaw_offset_deg"), value_type=float
+        ),
     }
 
     pid = Node(

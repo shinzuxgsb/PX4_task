@@ -23,6 +23,8 @@
 > 99 FPS、识别约 28–29 FPS、地面站稳定约 30 FPS。
 > 队友执行包位于 `mavlink_ws/deliverables/PX4_D_TASK_20261024.*`，包含
 > 地面站、ROS 包、脚本、配置、安装脚本和校验文件。
+> 2026-10-24 相机/激光确认装在机头左侧：航线按光轴定义，PX4 机头航向
+> 默认再右偏 `camera_yaw_offset_deg=90°`；标定机头角为 -90°。
 >
 > **2026-10-09 变更**：雷达由网口款 **`LDS-50C-E`** 换成串口款 **`LDS-50C-R`**
 > （香橙派 UART4 → `/dev/ttyS4`，需 u-boot overlay `rk3588-uart4-m2.dtbo`）。

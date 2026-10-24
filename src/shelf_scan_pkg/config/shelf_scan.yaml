@@ -12,9 +12,9 @@
     auto_calibrate: true             # 起飞前静止在起飞点时自动标定场地坐标系
     field_home_x_cm: 75.0            # 标定时刻无人机所在处，对应场地起飞点
     field_home_y_cm: 75.0
-    # ⚠ 标定基准：飞机摆在起飞点时机头朝哪儿。0 = 朝 +X（正对货架），
-    # 现在起飞朝向就是正对货架，所以这里必须是 0；摆错方向会导致整个场地坐标系转 90°。
-    field_home_yaw_deg: 0.0
+    # field.json 的 takeoff_yaw=0 表示相机/激光朝场地 +X。
+    # 光轴在机头左侧 90°，所以标定时机头朝向为 -90°。
+    field_home_yaw_deg: -90.0
     origin_yaw_offset_deg: 0.0       # auto_calibrate=false 时使用的手工值
     origin_x_cm: 75.0
     origin_y_cm: 75.0
@@ -22,6 +22,9 @@
     # ---- 坐标系与话题（与原工程一致） ----
     map_frame: "map"
     body_frame: "laser_link"
+    # 相机和激光笔相对机头的安装角。正数 = 光轴指向机头左侧。
+    # 当前实物：摄像头和激光都在机头左侧，光轴相对机头左转 90°。
+    camera_yaw_offset_deg: 90.0
     height_topic: "/height"
     target_topic: "/target_position"
     vision_mode_topic: "/vision_target_mode"
