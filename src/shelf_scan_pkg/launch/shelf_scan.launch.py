@@ -34,6 +34,9 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("start_mission", default_value="true"),
         DeclareLaunchArgument("camera_device", default_value="/dev/video0"),
         DeclareLaunchArgument("code_mode", default_value="qr"),
+        DeclareLaunchArgument("capture_fps", default_value="120.0"),
+        DeclareLaunchArgument("detect_fps", default_value="15.0"),
+        DeclareLaunchArgument("preview_fps", default_value="30.0"),
         DeclareLaunchArgument("camera_flip_ud", default_value="true"),
         DeclareLaunchArgument("camera_flip_lr", default_value="true"),
         DeclareLaunchArgument("preview_enabled", default_value="true"),
@@ -103,6 +106,15 @@ def generate_launch_description() -> LaunchDescription:
             {
                 "camera_device": LaunchConfiguration("camera_device"),
                 "code_mode": LaunchConfiguration("code_mode"),
+                "fps": ParameterValue(
+                    LaunchConfiguration("capture_fps"), value_type=float
+                ),
+                "detect_fps": ParameterValue(
+                    LaunchConfiguration("detect_fps"), value_type=float
+                ),
+                "preview_fps": ParameterValue(
+                    LaunchConfiguration("preview_fps"), value_type=float
+                ),
                 "camera_flip_ud": ParameterValue(
                     LaunchConfiguration("camera_flip_ud"), value_type=bool
                 ),

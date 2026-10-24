@@ -12,15 +12,20 @@
 //        · 话题：ros2 topic pub --once /shelf_scan/capture_trigger std_msgs/msg/Empty
 //        · 图片文件：参数 target_image_path:=/path/to/picked.png
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <opencv2/aruco.hpp>
@@ -58,7 +63,8 @@ public:
     camera_device_ = declare_parameter<std::string>("camera_device", "/dev/video0");
     frame_width_ = declare_parameter<int>("frame_width", 640);
     frame_height_ = declare_parameter<int>("frame_height", 480);
-    fps_ = declare_parameter<double>("fps", 15.0);
+    fps_ = declare_parameter<double>("fps", 120.0);
+    detect_fps_ = declare_parameter<double>("detect_fps", 15.0);
     show_preview_ = declare_parameter<bool>("show_preview", false);
     code_mode_ = declare_parameter<std::string>("code_mode", "both");
     apriltag_dictionary_name_ =
@@ -71,7 +77,7 @@ public:
     // ---- 电脑浏览器实时预览（MJPEG over HTTP）----
     preview_enabled_ = declare_parameter<bool>("preview_enabled", false);
     preview_port_ = declare_parameter<int>("preview_port", 8080);
-    preview_fps_ = declare_parameter<double>("preview_fps", 10.0);
+    preview_fps_ = declare_parameter<double>("preview_fps", 30.0);
     preview_quality_ = declare_parameter<int>("preview_quality", 70);
     preview_draw_ = declare_parameter<bool>("preview_draw", true);
 
@@ -144,10 +150,10 @@ public:
       throw std::runtime_error("相机打开失败：" + camera_device_);
     }
 
-    const auto period = std::chrono::duration<double>(1.0 / std::max(fps_, 1.0));
-    frame_timer_ = create_wall_timer(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-      std::bind(&CodeReaderNode::frameCallback, this));
+    worker_running_ = true;
+    capture_thread_ = std::thread(&CodeReaderNode::captureLoop, this);
+    detect_thread_ = std::thread(&CodeReaderNode::detectLoop, this);
+    preview_thread_ = std::thread(&CodeReaderNode::previewLoop, this);
 
     if (auto_capture_target_) {
       capture_timer_ = create_wall_timer(
@@ -162,6 +168,10 @@ public:
       get_logger(),
       "二维码识别节点已启动：设备=%s 模式=%s 编号范围=[%d,%d] 连续识别话题=%s",
       camera_device_.c_str(), code_mode_.c_str(), number_min_, number_max_, code_topic_.c_str());
+    RCLCPP_INFO(
+      get_logger(),
+      "异步图像管线：采集目标=%.0f fps，识别目标=%.0f fps，地面站预览=%.0f fps",
+      fps_, detect_fps_, preview_fps_);
     RCLCPP_INFO(
       get_logger(),
       "要求 2-1 单次识别：服务 %s 或话题 %s 或参数 auto_capture_target:=true",
@@ -192,6 +202,11 @@ public:
 
   ~CodeReaderNode() override
   {
+    worker_running_ = false;
+    frame_ready_cv_.notify_all();
+    if (capture_thread_.joinable()) capture_thread_.join();
+    if (detect_thread_.joinable()) detect_thread_.join();
+    if (preview_thread_.joinable()) preview_thread_.join();
     preview_.stop();
     if (zbar_scanner_ != nullptr) zbar_image_scanner_destroy(zbar_scanner_);
     if (camera_.isOpened()) camera_.release();
@@ -214,6 +229,16 @@ private:
     if (frame_width_ > 0) camera_.set(cv::CAP_PROP_FRAME_WIDTH, frame_width_);
     if (frame_height_ > 0) camera_.set(cv::CAP_PROP_FRAME_HEIGHT, frame_height_);
     if (fps_ > 0.0) camera_.set(cv::CAP_PROP_FPS, fps_);
+    const int fourcc = static_cast<int>(camera_.get(cv::CAP_PROP_FOURCC));
+    RCLCPP_INFO(
+      get_logger(),
+      "相机实际参数：%.0fx%.0f @ %.1f fps，fourcc=%c%c%c%c",
+      camera_.get(cv::CAP_PROP_FRAME_WIDTH), camera_.get(cv::CAP_PROP_FRAME_HEIGHT),
+      camera_.get(cv::CAP_PROP_FPS),
+      static_cast<char>(fourcc & 0xff),
+      static_cast<char>((fourcc >> 8) & 0xff),
+      static_cast<char>((fourcc >> 16) & 0xff),
+      static_cast<char>((fourcc >> 24) & 0xff));
     return true;
   }
 
@@ -335,7 +360,7 @@ private:
       }
     }
     zbar_image_destroy(image);
-    last_qr_count_ = valid_symbols;
+    last_qr_count_.store(valid_symbols);
     if (decoded) {
       number = best_number;
       confidence = 0.95;
@@ -437,7 +462,7 @@ private:
       detection.corners = box;
       detection.px_per_cm = scaleFromCorners(box);
       detection.source = "qr";
-      detection.qr_count = last_qr_count_;
+      detection.qr_count = last_qr_count_.load();
       return detection;
     }
     return detection;
@@ -563,7 +588,7 @@ private:
     std::snprintf(
       status, sizeof(status), "mode=%s  qr_count=%d  %s",
       code_mode_.c_str(),
-      detection.valid ? detection.qr_count : last_qr_count_,
+      detection.valid ? detection.qr_count : last_qr_count_.load(),
       detection.valid ? "TRACKING" : "searching");
     cv::putText(
       frame, status, cv::Point(10, frame.rows - 9),
@@ -571,42 +596,127 @@ private:
   }
 
   // 推送一帧预览。没有浏览器连接时立刻返回，连 JPEG 都不编码。
-  // 节流到 preview_fps_：既省 CPU，也避免把 WiFi 打满、挤到 WebSocket 控制链路。
-  void updatePreview(cv::Mat & frame, const Detection & detection, bool force = false)
+  // 独立预览线程按 preview_fps_ 调用这里，识别耗时不会拖慢画面。
+  void updatePreview(cv::Mat & frame, const Detection & detection)
   {
     if (!preview_enabled_ || frame.empty()) return;
     if (!preview_.hasClients()) return;
-    if (!force && last_preview_time_.time_since_epoch().count() != 0) {
-      const double elapsed =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - last_preview_time_)
-        .count();
-      if (elapsed < 1.0 / std::max(preview_fps_, 1.0)) return;
-    }
-    last_preview_time_ = std::chrono::steady_clock::now();
 
     if (preview_draw_) drawOverlay(frame, detection);
     preview_.publish(frame, preview_quality_);
   }
 
-  void frameCallback()
+  bool getLatestFrame(cv::Mat & frame, std::uint64_t & sequence)
   {
-    cv::Mat frame;
-    if (!camera_.read(frame) || frame.empty()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000, "读取相机帧失败");
-      return;
+    std::unique_lock<std::mutex> lock(frame_mutex_);
+    const bool ready = frame_ready_cv_.wait_for(
+      lock, std::chrono::milliseconds(250),
+      [this, sequence]() {
+        return !worker_running_.load() || latest_frame_seq_ > sequence;
+      });
+    if (!ready || latest_frame_seq_ <= sequence || latest_frame_.empty()) {
+      return false;
     }
-    applyOrientation(frame);        // 摄像头倒装时先转回来
-    const Detection detection = detect(frame);
-    if (detection.valid) {
-      publishDetection(detection, frame);
+    sequence = latest_frame_seq_;
+    frame = latest_frame_.clone();
+    return !frame.empty();
+  }
+
+  void captureLoop()
+  {
+    while (worker_running_.load()) {
+      cv::Mat frame;
+      if (!camera_.read(frame) || frame.empty()) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000, "读取相机帧失败");
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        continue;
+      }
+      {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        latest_frame_ = std::move(frame);
+        ++latest_frame_seq_;
+      }
+      ++capture_count_;
+      frame_ready_cv_.notify_all();
     }
-    updatePreview(frame, detection);
-    if (show_preview_) {
-      // 单独 clone 一份，避免和上面的预览重复画标注
-      cv::Mat canvas = frame.clone();
-      drawOverlay(canvas, detection);
-      cv::imshow("shelf_code_reader", canvas);
-      cv::waitKey(1);
+  }
+
+  void detectLoop()
+  {
+    std::uint64_t sequence = 0;
+    const auto period = std::chrono::duration<double>(
+      1.0 / std::max(1.0, detect_fps_));
+    while (worker_running_.load()) {
+      const auto started = std::chrono::steady_clock::now();
+      cv::Mat frame;
+      if (getLatestFrame(frame, sequence)) {
+        applyOrientation(frame);
+        Detection detection;
+        {
+          std::lock_guard<std::mutex> detect_lock(detect_mutex_);
+          detection = detect(frame);
+        }
+        {
+          std::lock_guard<std::mutex> result_lock(detection_mutex_);
+          latest_detection_ = detection;
+          latest_detection_time_ = std::chrono::steady_clock::now();
+        }
+        if (detection.valid) publishDetection(detection, frame);
+        ++detect_count_;
+      }
+      std::this_thread::sleep_until(
+        started + std::chrono::duration_cast<std::chrono::steady_clock::duration>(period));
+    }
+  }
+
+  void previewLoop()
+  {
+    std::uint64_t sequence = 0;
+    const auto period = std::chrono::duration<double>(
+      1.0 / std::max(1.0, preview_fps_));
+    auto next_frame = std::chrono::steady_clock::now();
+    auto last_stats = next_frame;
+    while (worker_running_.load()) {
+      cv::Mat frame;
+      if (getLatestFrame(frame, sequence)) {
+        applyOrientation(frame);
+        Detection detection;
+        {
+          std::lock_guard<std::mutex> lock(detection_mutex_);
+          const bool fresh = latest_detection_time_.time_since_epoch().count() != 0 &&
+            std::chrono::steady_clock::now() - latest_detection_time_ <=
+            std::chrono::milliseconds(600);
+          if (fresh) detection = latest_detection_;
+        }
+        if (preview_.hasClients()) {
+          updatePreview(frame, detection);
+          ++preview_count_;
+        }
+        if (show_preview_) {
+          cv::Mat canvas = frame.clone();
+          drawOverlay(canvas, detection);
+          cv::imshow("shelf_code_reader", canvas);
+          cv::waitKey(1);
+        }
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (now - last_stats >= std::chrono::seconds(2)) {
+        const double elapsed = std::chrono::duration<double>(now - last_stats).count();
+        const auto captures = capture_count_.exchange(0);
+        const auto detects = detect_count_.exchange(0);
+        const auto previews = preview_count_.exchange(0);
+        RCLCPP_INFO(
+          get_logger(),
+          "CAMERA_RATE capture=%.1f fps detect=%.1f fps preview=%.1f fps",
+          captures / elapsed, detects / elapsed, previews / elapsed);
+        last_stats = now;
+      }
+
+      next_frame += std::chrono::duration_cast<std::chrono::steady_clock::duration>(period);
+      const auto after_work = std::chrono::steady_clock::now();
+      if (next_frame < after_work) next_frame = after_work + std::chrono::milliseconds(1);
+      std::this_thread::sleep_until(next_frame);
     }
   }
 
@@ -638,11 +748,16 @@ private:
       RCLCPP_INFO(
         get_logger(), "%s：开始连续采集 %d 帧识别抽取的二维码，请保持对准…",
         reason.c_str(), frames);
+      std::uint64_t sequence = 0;
       for (int i = 0; i < frames; ++i) {
         cv::Mat frame;
-        if (camera_.read(frame) && !frame.empty()) {
+        if (getLatestFrame(frame, sequence)) {
           applyOrientation(frame);      // 摄像头倒装时先转回来
-          const Detection detection = detect(frame);
+          Detection detection;
+          {
+            std::lock_guard<std::mutex> detect_lock(detect_mutex_);
+            detection = detect(frame);
+          }
           if (detection.valid) ++votes[detection.number];
           updatePreview(frame, detection);
           if (show_preview_) {
@@ -681,7 +796,7 @@ private:
 
   cv::VideoCapture camera_;
   zbar_image_scanner_t * zbar_scanner_ = nullptr;
-  int last_qr_count_ = 0;      // decodeQrWithZbar 最近一帧看到的二维码个数
+  std::atomic<int> last_qr_count_{0};  // decodeQrWithZbar 最近一帧二维码个数
   cv::Ptr<cv::aruco::Dictionary> apriltag_dictionary_;
   cv::Ptr<cv::aruco::DetectorParameters> apriltag_parameters_;
 
@@ -691,19 +806,33 @@ private:
   double preview_fps_ = 10.0;
   int preview_quality_ = 70;
   bool preview_draw_ = true;
-  std::chrono::steady_clock::time_point last_preview_time_{};
 
   double qr_size_cm_ = 19.0;        // 二维码物理边长，用于 px <-> cm 换算
   double align_radius_cm_ = 5.0;    // 预览上容差圆的半径（cm）
   bool camera_flip_ud_ = true;      // 摄像头上下倒装
   bool camera_flip_lr_ = true;      // 摄像头左右倒装
 
+  std::atomic<bool> worker_running_{false};
+  std::thread capture_thread_;
+  std::thread detect_thread_;
+  std::thread preview_thread_;
+  std::mutex frame_mutex_;
+  std::condition_variable frame_ready_cv_;
+  cv::Mat latest_frame_;
+  std::uint64_t latest_frame_seq_ = 0;
+  std::mutex detect_mutex_;
+  std::mutex detection_mutex_;
+  Detection latest_detection_;
+  std::chrono::steady_clock::time_point latest_detection_time_{};
+  std::atomic<std::uint64_t> capture_count_{0};
+  std::atomic<std::uint64_t> detect_count_{0};
+  std::atomic<std::uint64_t> preview_count_{0};
+
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr code_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr target_id_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr fine_data_pub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr trigger_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr capture_service_;
-  rclcpp::TimerBase::SharedPtr frame_timer_;
   rclcpp::TimerBase::SharedPtr capture_timer_;
 
   std::string camera_device_;
@@ -717,7 +846,8 @@ private:
   std::string target_image_path_;
   int frame_width_ = 640;
   int frame_height_ = 480;
-  double fps_ = 15.0;
+  double fps_ = 120.0;
+  double detect_fps_ = 15.0;
   bool show_preview_ = false;
   bool tag_id_as_number_ = true;
   bool publish_fine_data_ = true;

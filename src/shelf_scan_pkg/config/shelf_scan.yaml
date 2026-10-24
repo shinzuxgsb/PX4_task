@@ -193,11 +193,10 @@
     camera_device: "/dev/video0"
     frame_width: 640
     frame_height: 480
-    # 相机帧率。识别确认要连续 scan_confirm_frames 帧，所以帧率直接决定识别延迟：
-    #   2 帧 @15fps = 133ms；2 帧 @30fps = 67ms。
-    # 相机 640x480 MJPG 支持 30fps（v4l2 格式表确认过）。2026-09-25 从 15 提到 30 降延迟。
-    # 若发现识别跟不上（实际有效帧率上不去），看 ros2 topic hz /shelf_scan/code 确认。
-    fps: 30.0
+    # 640x480 MJPG 的摄像头硬件能力为 120 fps。采集线程持续读最新帧，
+    # 识别和 MJPEG 预览在独立线程运行，二维码检测不会阻塞相机采集。
+    fps: 120.0
+    detect_fps: 15.0
     show_preview: false
     # ---- 电脑浏览器实时预览（MJPEG over HTTP，2026-09-19 新增）----
     # 相机被本节点独占，所以预览由本节点直接把"画好检测框"的帧吐出去，
@@ -206,7 +205,7 @@
     # 没有浏览器连接时零开销（不编码、不发送），断开也不会影响识别。
     preview_enabled: true
     preview_port: 8080
-    preview_fps: 10.0          # 推给浏览器的帧率，与识别帧率独立；调低省 CPU 和带宽
+    preview_fps: 30.0          # 地面站 MJPEG 帧率，与识别频率独立
     preview_quality: 70        # JPEG 质量，640x480 下约 25~45KB/帧（≈2~3.5Mbps@10fps）
     preview_draw: true         # 是否在预览画面上画检测框/编号/偏差
     # ---- 像素 <-> 厘米标定（2026-09-19 新增）----

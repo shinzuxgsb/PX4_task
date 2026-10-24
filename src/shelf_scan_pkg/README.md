@@ -18,6 +18,9 @@
 - `/shelf_scan/laser`：激光短脉冲控制
 - `/mission_complete`、`/mission_active`：任务生命周期
 
+相机为 640×480 MJPG，采集请求 120 FPS；识别独立为 15 FPS，地面站
+MJPEG 预览固定 30 FPS。采集、识别和预览分线程运行。
+
 匿名飞控的 `uart_to_stm32`、`0x31/0x32/0x66` 和 STM32 串口协议在此版本中
 均不使用。
 

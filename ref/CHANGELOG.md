@@ -4402,3 +4402,21 @@ sudo systemctl enable  --now px4-ev-chain
 ### 4. 回滚
 - 删除 `groundstation_px4/` 不影响机载任务；
 - 机载恢复上一提交即可回到只有命令行起飞流程的版本。
+
+## 2026-10-24 补记：相机采集与预览帧率解耦
+
+- 原实现每帧同步执行 `read -> CLAHE -> ZBar -> JPEG`，实测只有约
+  7.5 FPS，二维码识别耗时直接拖慢地面站画面。
+- 改为三线程异步管线：
+  1. 相机采集线程持续读取最新帧，640×480 MJPG 请求 120 FPS；
+  2. 二维码检测线程独立运行，目标 15 FPS；
+  3. 地面站 MJPEG 预览线程固定 30 FPS，只取最新帧，不等待 ZBar。
+- 单次抽取二维码也改为读取采集线程的最新帧，不再和采集线程同时操作
+  `/dev/video0`。
+- 运行日志新增 `CAMERA_RATE capture/detect/preview` 两秒统计。
+- 实测：相机硬件模式报告 120.1 FPS；软件实际采集约 **98–99 FPS**；
+  识别稳定约 **14.8–15.3 FPS**；地面站预览 **29.74–29.98 FPS**。
+- V4L2 压缩帧直通复测也约 96 FPS，说明 120 是模式上限，当前 USB/相机
+  实际交付受设备链路限制；保持 640×480 以保证二维码识别距离和清晰度。
+- 回滚：恢复 `code_reader_node.cpp` 和 `shelf_scan.yaml` 上一提交，
+  重新执行 `colcon build --symlink-install --packages-select shelf_scan_pkg`。
