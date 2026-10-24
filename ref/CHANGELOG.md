@@ -4469,3 +4469,29 @@ sudo systemctl enable  --now px4-ev-chain
   `PX4 GO 0→1`、`任务开始` 并进入 `takeoff` 航段；全程飞控保持未解锁。
 - 正常任务结束后断链是当前的预期行为：适配器退出会让整个 launch 关闭，
   包括 WebSocket 客户端。落地、上锁确认后再重新执行预检即可。
+
+## 2026-10-24 补记：以板端现场版本为基线，A 面下降 4 cm
+
+- 先连接新的香橙派地址 `orangepi@10.249.123.10`，逐文件核对后以板上
+  `/home/orangepi/mavlink_ws` 为权威基线同步回仓库，没有用本地旧文件覆盖
+  队友改动。`mavlink-ws-chain` 本次核验时为 active。
+- 板端原 A 面高度为 A1–A3 140 cm、A4 97 cm、A5–A6 100 cm；按用户要求
+  六个点整体下降 4 cm，改为 A1–A3 136 cm、A4 93 cm、A5–A6 96 cm。
+  实现为 A 面 `row_delta_cm=[-19,-19]`、`A4` 点位高度覆盖 `93.0`；
+  B 面保持板端现场值 150/150/150/107/107/110 cm。
+- 机载 `field.json`、地面站 `field.json`、黄金航线快照和队友执行包同步更新。
+  航线仍为 1094.5 cm，预计用时 71.9 s；板端 `shelf_selftest` 23/23、
+  PX4 适配器单测 5/5 通过。
+- 板端 `config/groundstation.env` 发现仍是队友改的
+  `ws://10.249.102.59:8890/ws`，已恢复为控制电脑
+  `ws://10.249.114.28:8890/ws`；预检脚本仍支持用环境变量临时覆盖。
+- 修改前备份：
+  `~/backups/20261024_before_a_down4_env/`，其中原 IP 文件 SHA-256
+  `8ba789eb84334f6d2df65c73209cf54a0c27fd9ac8d6d96ac4e8ad2bc0206dda`，
+  修改前 A 面配置 SHA-256
+  `1523b2ecb794982cf17b16ca3ce8187d611bded80c181dd8bbdcf865fa17ceb1`。
+- 执行包升级为 revision `4-a-face-down-4cm`，ZIP SHA-256
+  `8ed107947ae8d4545880de465457007b97e5e45c784f435cbbfbcba52a954e8c`；
+  TAR.GZ SHA-256
+  `0709cb2c070d3f7fa41e6f971a2f2f13f5c1d4fc0ad23fd89a6ed1e16396c009`。
+- 本次只做配置、离线自测和预检，没有点击起飞、没有解锁。

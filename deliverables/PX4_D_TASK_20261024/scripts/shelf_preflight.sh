@@ -10,9 +10,13 @@ PID_FILE="/tmp/shelf_px4.launch.pid"
 LASER_GPIO_CHIP="${LASER_GPIO_CHIP:-gpiochip1}"
 LASER_GPIO_LINE="${LASER_GPIO_LINE:-4}"
 LASER_ACTIVE_HIGH="${LASER_ACTIVE_HIGH:-false}"
+GROUNDSTATION_WS_URL_OVERRIDE="${GROUNDSTATION_WS_URL:-}"
 if [[ -f "${WS}/config/groundstation.env" ]]; then
   # shellcheck disable=SC1091
   source "${WS}/config/groundstation.env"
+fi
+if [[ -n "${GROUNDSTATION_WS_URL_OVERRIDE}" ]]; then
+  GROUNDSTATION_WS_URL="${GROUNDSTATION_WS_URL_OVERRIDE}"
 fi
 GROUNDSTATION_ENABLED="${GROUNDSTATION_ENABLED:-true}"
 GROUNDSTATION_WS_URL="${GROUNDSTATION_WS_URL:-ws://10.249.114.28:8890/ws}"
