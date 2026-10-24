@@ -255,6 +255,8 @@ class GroundState:
                 msg.get("takeoff_available", p["takeoff_available"])
             )
             p["last_rx"] = time.time()
+            if p["state"] == "WAIT_GO" and self.mission["state"] != "running":
+                self.mission["phase"] = "待命"
         if p["state"] != old_state:
             message = {
                 "WAIT_STABLE": "机载端正在检查定位稳定性",
