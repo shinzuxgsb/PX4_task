@@ -15,6 +15,6 @@ tf_to_odom:
     # 代价是速度噪声略增（约 2cm/s），EKF 侧靠 odom_velocity_noise 声明。
     velocity_window_s: 0.14    # 时间窗差分，不要用相邻帧
     deadband_mps: 0.015        # 1.5 cm/s 以下判为静止（原来 2 cm/s）
-    max_speed_mps: 1.0         # 超过判为回环/重定位跳变，本周期丢弃
+    max_speed_mps: 2.0         # 超过判为回环/重定位跳变，本周期丢弃
     lowpass_alpha: 0.40        # 一阶低通（原 0.25 → 滞后小一半，噪声大一点）
     max_tf_age_s: 0.3          # TF 太旧就停止发布

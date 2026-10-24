@@ -43,7 +43,12 @@ mavlink_bridge:
     # 建议同时把 PX4 的 EKF2_EV_CTRL 从 15 改成 13（清掉"垂直位置融合"位）。
     odom_position_noise_z: 1.0e6       # 垂直位置方差 m^2（等于不提供）
     odom_velocity_noise_z: 1.0e6       # 垂直速度方差 (m/s)^2（等于不提供）
-    odom_max_position_jump_m: 0.5      # 超过此跳变判为回环/重定位，丢弃并递增 reset_counter
+    # 2026-10-20：0.5 m 单帧阈值太敏感（实测 0.51 m/0.43 s 是正常飞行），
+    # 改为「硬限幅 + 时间归一化速度 + 连续帧确认」：
+    odom_max_position_jump_m: 1.5      # 单帧硬限幅，挡住米级/几百米级重定位
+    odom_max_jump_speed_mps: 2.5       # 位移 >= min 时，速度超过此值才算跳变
+    odom_jump_min_m: 0.25              # 小于此位移不参与速度判据
+    odom_jump_confirm_frames: 2        # 连续 N 帧才进入 fail-closed 停发
     # 147 适配（2026-10-17）：跳变后**停发 EV**（不递增 reset_counter），
     # 位姿稳定这么久才恢复（回到原坐标系）或判定为真重定位（保持停发）
     odom_jump_hold_s: 2.0
@@ -54,9 +59,10 @@ mavlink_bridge:
     # 走我们现有的 MAVLink 链路（TELEM3），飞控侧不需要开新口。
     range_uplink_enabled: true
     range_topic: "/tofsense/range"
+    range_quality_topic: "/tofsense/quality"
     range_send_rate: 25.0              # 上行频率 Hz
     range_min_cm: 2
-    range_max_cm: 500
+    range_max_cm: 400
     range_covariance_cm2: 4            # 上报方差（cm^2），4 = 2cm 标准差
     range_orientation: 25              # 25 = PITCH_270，朝下测距
     range_sensor_id: 0
@@ -69,6 +75,10 @@ mavlink_bridge:
     velocity_topic: "/target_velocity"
     offboard_rate: 20.0                # setpoint 发送频率 Hz
     offboard_timeout_s: 0.5            # 指令过期时间，超时即停发
+    # 任务侧已经按合速度计算；这里再做一次独立保护。
+    max_horizontal_speed_cm_s: 24.0
+    max_vertical_speed_cm_s: 20.0
+    max_yaw_rate_deg_s: 6.0
 
     # ---- 飞控命令通道 ----
     # 往 /px4_command 发字符串即可，支持：

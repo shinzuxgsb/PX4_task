@@ -21,35 +21,9 @@ stop_all() {
 
 if [ "${1:-}" = "stop" ]; then stop_all; exit 0; fi
 
-# 链路启动前必须等系统时钟同步完成。否则 NTP 首次校时会让 bluesea2
-# 的扫描时间戳发生跳变，Cartographer 可能输出数百米的假位姿。
-wait_for_ntp() {
-  echo "等待 NTP 时间同步 ..."
-  local waited=0
-  while [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" != "yes" ]; do
-    waited=$((waited + 1))
-    if [ "$waited" -ge 300 ]; then
-      echo "NTP 300 秒内未同步，拒绝启动链路。" >&2
-      exit 1
-    fi
-    sleep 1
-  done
-  echo "NTP 已同步，继续启动链路。"
-}
-
-wifi_connected() {
-  command -v nmcli >/dev/null 2>&1 || return 1
-  timeout 3 nmcli -t -f GENERAL.STATE device show wlan0 2>/dev/null \
-    | grep -q '100 (connected)'
-}
-
-if wifi_connected; then
-  echo "Wi-Fi 已连接（调试模式）。"
-  wait_for_ntp
-else
-  echo "Wi-Fi 未连接：离线飞行模式，跳过 NTP 等待，直接启动链路。"
-  echo "警告：离线启动后不要连接 Wi-Fi；如需连网调试，先停链、同步 NTP 后重启。"
-fi
+# NTP is intentionally disabled. Do not wait for time sync here: the chain
+# starts immediately using the board's current/RTC clock. This also avoids
+# an in-flight NTP step changing LaserScan timestamps.
 
 # shellcheck disable=SC1091
 source /opt/ros/humble/setup.bash

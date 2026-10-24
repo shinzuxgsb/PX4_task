@@ -4,15 +4,26 @@ tofsense:
     port: "/dev/ttyS3"        # 香橙派 UART3（物理 31/33 脚）
     baud: 921600
     topic: "/tofsense/range"
+    quality_topic: "/tofsense/quality"
     frame_id: "tofsense"
 
     # 16 个分区怎么合成一个高度值：
-    #   median = 取中位数（默认，抗单个分区跳变）
+    #   center4_median = 取中心 4 个分区的中位数（默认）
+    #   median = 取全部有效分区的中位数
     #   min    = 取最近的分区（对下方障碍最保守）
     #   center = 全部有效分区的均值
-    zone_select: "median"
+    zone_select: "center4_median"
+
+    # 用户手册：status=0 才是“测量数据可用”；255 表示未检测到目标，
+    # 此时距离字段会保持上一次的值，因此绝不能继续发布。
+    # 0=可用；10=可用（此前未检测到目标）。255=未检测到目标，距离保留旧值。
+    valid_statuses: "0,10"
+    min_signal: 0
+    min_valid_zones: 3
+    max_zone_spread_m: 0.15
+    max_sample_age_s: 0.20
 
     min_range: 0.02           # m，低于此值视为无效
-    max_range: 5.0            # m，高于此值视为无效
+    max_range: 4.0            # m，手册典型量程 0.015~4.0m @ 600 lux
     field_of_view: 0.35       # rad
     publish_rate: 50.0        # Hz

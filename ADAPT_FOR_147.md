@@ -134,19 +134,4 @@ ros2 topic echo /tofsense/range --once
 - 根因：`lidar_uart.yaml` 未设置 `time_mode`，`bluesea2` 串口驱动默认 `time_mode=0`
   （系统时间），`DecTimestamp()` 用 `gettimeofday()`；链路先启动、NTP 后校时，
   雷达扫描时间戳被拉跳，Cartographer 输出数百米假位姿。
-- 修改：
-  · `mavlink-ws-chain.service` 不再硬依赖 `systemd-time-wait-sync.service`，
-    避免离线飞行时链路永远不启动；
-  · `start_mavlink_ws.sh` 新增条件门控：只有 `wlan0` 已连接时才调用
-    `wait_for_ntp()`（每 1 s 检查 `NTPSynchronized`，最多 300 s）；
-    没有 Wi-Fi 时按离线模式立即启动，使用 RTC 时间；
-  · 离线启动后不要中途连 Wi-Fi；如要连网调试，先停链、等 NTP 同步后重启；
-  · 备份：`mavlink-ws-chain.service.bak-20261020`、
-    `start_mavlink_ws.sh.bak-20261020`。
-- 验证（2026-10-20 20:41）：日志先打印“等待 NTP 时间同步 ...”，随后
-  “NTP 已同步，继续启动链路。”；扫描 15.15 Hz；EV 预热完成；
-  `ekf_ok=True flags=0x1af`、高度 9 cm、ODOMETRY 934 帧、跳变 0。
-- 启动耗时：当前手机热点环境首次 NTP 同步约 **155.9 s**，随后 EV 预热
-  约 11 s、首次 `ekf_ok=True` 约 15 s；总开机到可用约 **2 分 51 秒**。
-  主要耗时是 Wi-Fi 关联，NTP 服务器本身往返仅约 32–206 ms。
-- 注意：`amphi.lua` 和飞控参数均未改动；该修复只改变启动时序。
+  - 2026-10-21: NTP disabled. start_mavlink_ws.sh no longer waits; systemd-timesyncd disabled; no time-sync dependency.

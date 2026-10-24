@@ -1,11 +1,7 @@
 build/
 install/
 log/
-__pycache__/
-*.py[cod]
+third_party/
+**/__pycache__/
+*.pyc
 *.bak-*
-*.new
-*.whl
-*.tar.gz
-.pytest_cache/
-.DS_Store

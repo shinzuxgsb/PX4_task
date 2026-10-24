@@ -37,6 +37,8 @@ from rclpy.qos import (
 from sensor_msgs.msg import Range
 from std_msgs.msg import Float32MultiArray, Int16, String, UInt8
 
+from .jump_guard import classify_step
+
 # ODOMETRY 的 msgid 是 331（>255），MAVLink v1 装不下，必须用 v2 方言。
 # pymavlink 默认加载 v10 dialect，这里在导入前强制切到 v20。
 os.environ.setdefault("MAVLINK20", "1")
@@ -146,7 +148,10 @@ class MavlinkBridge(Node):
         # 2D 激光给不了高度：垂直方向的方差要设得极大，让 EKF 直接忽略这一路
         self.declare_parameter("odom_position_noise_z", 1.0e6)  # m^2
         self.declare_parameter("odom_velocity_noise_z", 1.0e6)  # (m/s)^2
-        self.declare_parameter("odom_max_position_jump_m", 0.5)
+        self.declare_parameter("odom_max_position_jump_m", 1.5)
+        self.declare_parameter("odom_max_jump_speed_mps", 2.5)
+        self.declare_parameter("odom_jump_min_m", 0.25)
+        self.declare_parameter("odom_jump_confirm_frames", 2)
         self.declare_parameter("odom_max_data_age_s", 0.5)
         # 147 适配（2026-10-17）：跳变后"位姿稳定多久"才恢复/判定为重定位
         self.declare_parameter("odom_jump_hold_s", 2.0)
@@ -155,9 +160,10 @@ class MavlinkBridge(Node):
         # --- 测距上行（TOFSense -> MAVLink DISTANCE_SENSOR -> PX4 EKF）---
         self.declare_parameter("range_uplink_enabled", True)
         self.declare_parameter("range_topic", "/tofsense/range")
+        self.declare_parameter("range_quality_topic", "/tofsense/quality")
         self.declare_parameter("range_send_rate", 25.0)
         self.declare_parameter("range_min_cm", 2)
-        self.declare_parameter("range_max_cm", 500)
+        self.declare_parameter("range_max_cm", 400)
         self.declare_parameter("range_covariance_cm2", 4)
         self.declare_parameter("range_orientation", 25)   # 25 = PITCH_270（朝下）
         self.declare_parameter("range_sensor_id", 0)
@@ -169,6 +175,9 @@ class MavlinkBridge(Node):
         self.declare_parameter("velocity_topic", "/target_velocity")
         self.declare_parameter("offboard_rate", 20.0)
         self.declare_parameter("offboard_timeout_s", 0.5)
+        self.declare_parameter("max_horizontal_speed_cm_s", 24.0)
+        self.declare_parameter("max_vertical_speed_cm_s", 20.0)
+        self.declare_parameter("max_yaw_rate_deg_s", 6.0)
 
         # --- 飞控命令通道（解锁/切模式）---
         # 往 /px4_command 发字符串：arm / disarm / offboard / position / altitude / land
@@ -203,6 +212,13 @@ class MavlinkBridge(Node):
         self.odom_position_noise_z = float(self.get_parameter("odom_position_noise_z").value)
         self.odom_velocity_noise_z = float(self.get_parameter("odom_velocity_noise_z").value)
         self.odom_max_position_jump_m = float(self.get_parameter("odom_max_position_jump_m").value)
+        self.odom_max_jump_speed_mps = float(
+            self.get_parameter("odom_max_jump_speed_mps").value
+        )
+        self.odom_jump_min_m = float(self.get_parameter("odom_jump_min_m").value)
+        self.odom_jump_confirm_frames = max(
+            1, int(self.get_parameter("odom_jump_confirm_frames").value)
+        )
         self.odom_max_data_age_s = float(self.get_parameter("odom_max_data_age_s").value)
         self.odom_jump_hold_s = float(self.get_parameter("odom_jump_hold_s").value)
         self.odom_min_send_interval_s = max(
@@ -244,6 +260,8 @@ class MavlinkBridge(Node):
         self._odom_rejected_jump = 0
         self._odom_last_send = 0.0
         self._odom_last_pos = None
+        self._odom_last_accept_recv = None
+        self._odom_reject_streak = 0
         self._odom_reset_counter = 0
         # --- 147 适配（2026-10-17）：跳变 fail-closed 状态 ---
         self._odom_warm_done = False      # 启动预热是否完成（稳定后才开始发 EV）
@@ -267,14 +285,23 @@ class MavlinkBridge(Node):
         # --- 测距上行 ---
         self._range_lock = threading.Lock()
         self._range_m: float | None = None
+        self._range_quality = 100
+        self._range_stamp = 0.0
         self._range_last_send = 0.0
         self._range_sent = 0
         self._range_sub = None
+        self._range_quality_sub = None
         if self.range_uplink_enabled:
             self._range_sub = self.create_subscription(
                 Range,
                 str(self.get_parameter("range_topic").value),
                 self._range_callback,
+                10,
+            )
+            self._range_quality_sub = self.create_subscription(
+                UInt8,
+                str(self.get_parameter("range_quality_topic").value),
+                self._range_quality_callback,
                 10,
             )
 
@@ -713,6 +740,20 @@ class MavlinkBridge(Node):
             return
 
         vx, vy, vz, vyaw = sp
+        horizontal_limit = max(
+            1.0, float(self.get_parameter("max_horizontal_speed_cm_s").value)
+        )
+        horizontal_speed = math.hypot(vx, vy)
+        if horizontal_speed > horizontal_limit and horizontal_speed > 1e-9:
+            scale = horizontal_limit / horizontal_speed
+            vx *= scale
+            vy *= scale
+        vertical_limit = max(
+            1.0, float(self.get_parameter("max_vertical_speed_cm_s").value)
+        )
+        yaw_limit = max(0.1, float(self.get_parameter("max_yaw_rate_deg_s").value))
+        vz = max(-vertical_limit, min(vertical_limit, vz))
+        vyaw = max(-yaw_limit, min(yaw_limit, vyaw))
         vx_m = vx / 100.0            # cm/s -> m/s
         vy_m = -vy / 100.0           # FLU(左) -> FRD(右)
         vz_m = -vz / 100.0           # FLU(上) -> FRD(下)
@@ -759,10 +800,12 @@ class MavlinkBridge(Node):
         if dist_cm <= 0:
             return
         dist_cm = max(self.range_min_cm, min(self.range_max_cm, dist_cm))
+        with self._range_lock:
+            signal_quality = max(1, min(100, int(self._range_quality)))
 
         try:
             self._conn.mav.distance_sensor_send(
-                int(now * 1000) & 0xFFFFFFFF,
+                int(time.monotonic() * 1000) & 0xFFFFFFFF,
                 self.range_min_cm,
                 self.range_max_cm,
                 dist_cm,
@@ -773,7 +816,7 @@ class MavlinkBridge(Node):
                 0.35,   # 水平 FOV (rad)
                 0.35,   # 垂直 FOV (rad)
                 (0.0, 0.0, 0.0, 0.0),   # quaternion（扩展字段，不用）
-                100,    # 信号质量 0-100（MAVLink v2 扩展字段）
+                signal_quality,
             )
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warn(
@@ -784,7 +827,12 @@ class MavlinkBridge(Node):
         self._range_last_send = now
         with self._range_lock:
             self._range_m = msg.range
+            self._range_stamp = now
             self._range_sent += 1
+
+    def _range_quality_callback(self, msg: UInt8) -> None:
+        with self._range_lock:
+            self._range_quality = int(msg.data)
 
     def _odom_callback(self, msg: Odometry) -> None:
         """SLAM 里程计 -> MAVLink ODOMETRY，喂给 PX4 的 EKF。"""
@@ -797,12 +845,19 @@ class MavlinkBridge(Node):
 
         stamp = msg.header.stamp
         stamp_s = stamp.sec + stamp.nanosec * 1e-9
-        age = self.get_clock().now().nanoseconds * 1e-9 - stamp_s
-        if age > self.odom_max_data_age_s:
+        now_epoch = time.time()
+        age = now_epoch - stamp_s
+        clock_skew = abs(age) > 1.0
+        if age > self.odom_max_data_age_s and not clock_skew:
             self.get_logger().warn(
                 f"里程计数据过期 {age:.2f}s，丢弃", throttle_duration_sec=2.0
             )
             return
+        if clock_skew:
+            self.get_logger().warn(
+                f"里程计时间戳偏差 {age:+.2f}s（疑似时钟步进），按当前时间发送",
+                throttle_duration_sec=2.0,
+            )
 
         p = msg.pose.pose.position
         q_msg = msg.pose.pose.orientation
@@ -847,31 +902,43 @@ class MavlinkBridge(Node):
 
         # 4) 跳变检测（回环/重定位会产生假的巨大速度）
         # ------------------------------------------------------------------
-        # 147 适配（2026-10-17，fail-closed）：原版是「丢一帧 + reset_counter+1 +
-        # 把基准挪到新位置」，下一帧就以新 reset_counter 当"合法重定位"发出去。
-        # 2026-10-17 22:07 那次 SLAM 跳了 272.35 m，EKF 位置直接锚到 273 m 外，
-        # 位置环去追这个假目标 → 翻机。现在改为：
-        #   · 启动先预热：位置连续稳定 odom_jump_hold_s 秒才开始发 EV
-        #     （避免冷启动第一帧的假位置成为基准）；
-        #   · 运行中跳变 > 阈值：立即停发 EV、**不**递增 reset_counter；
-        #       ↳ 位姿回到"最后一个可信位置"附近并稳定 hold_s → 恢复发（EKF 不重置）
-        #       ↳ 位姿在新位置稳定 hold_s → 判定为真重定位，继续停发（打 ERROR），
-        #         让飞控走位置失效保护，而不是追着假目标飞；需要人工停链重启。
-        # 原版备份：bridge_node.py.bak-20261017（在板上同目录）
+        # 2026-10-20：原来的 0.5 m 单帧阈值在飞行中过于敏感。实测 0.51 m /
+        # 0.43 s = 1.19 m/s，是正常飞行；原逻辑会直接 fail-closed 停发 EV，
+        # PX4 随后 EV 超时 failsafe。现在改为：
+        #   · 先用单帧硬限幅挡住米级/几百米级重定位；
+        #   · 再用接收时间归一化速度判断，允许正常飞行在 odom 间隙里的位移；
+        #   · 单帧可疑只丢这一帧，连续 odom_jump_confirm_frames 帧才进入
+        #     fail-closed 停发，避免一次毛刺直接触发飞控保护。
+        # 真正的重定位仍会停发 EV，让飞控走位置失效保护。
         # ------------------------------------------------------------------
         jump = 0.0
+        bad_step = False
         if self._odom_last_pos is not None:
             jump = math.dist((px, py, pz), self._odom_last_pos)
+            dt_s = (
+                now - self._odom_last_accept_recv
+                if self._odom_last_accept_recv is not None
+                else 0.0
+            )
+            bad_step = classify_step(
+                jump,
+                dt_s,
+                self.odom_max_position_jump_m,
+                self.odom_jump_min_m,
+                self.odom_max_jump_speed_mps,
+            )
 
         if not self._odom_warm_done:
-            if jump > self.odom_max_position_jump_m:
+            if bad_step:
                 self._odom_last_pos = (px, py, pz)
+                self._odom_last_accept_recv = now
                 self._odom_warm_since = None
                 return
             if self._odom_warm_since is None:
                 self._odom_warm_since = now
             if (now - self._odom_warm_since) < self.odom_jump_hold_s:
                 self._odom_last_pos = (px, py, pz)
+                self._odom_last_accept_recv = now
                 return
             self._odom_warm_done = True
             self.get_logger().info(
@@ -906,20 +973,29 @@ class MavlinkBridge(Node):
                         )
                 return
         else:
-            if jump > self.odom_max_position_jump_m:
+            if bad_step:
                 self._odom_rejected_jump += 1
-                self._odom_hold_active = True
-                self._odom_hold_ok_since = None
-                self._odom_hold_away_since = None
-                self._odom_hold_away_logged = False
-                self.get_logger().warn(
-                    f"里程计跳变 {jump:.2f}m（阈值 {self.odom_max_position_jump_m}m），"
-                    "停止发送 EV（不递增 reset_counter），等位姿稳定后再决定",
-                    throttle_duration_sec=1.0,
-                )
+                self._odom_reject_streak += 1
+                if self._odom_reject_streak >= self.odom_jump_confirm_frames:
+                    self._odom_hold_active = True
+                    self._odom_hold_ok_since = None
+                    self._odom_hold_away_since = None
+                    self._odom_hold_away_logged = False
+                    self.get_logger().error(
+                        f"连续 {self._odom_reject_streak} 帧里程计跳变"
+                        f"（最近 {jump:.2f}m），停发 EV；"
+                        "请停链重启（切勿在飞行中重启）"
+                    )
+                else:
+                    self.get_logger().warn(
+                        f"里程计单帧跳变 {jump:.2f}m，丢弃该帧并等待下一帧确认",
+                        throttle_duration_sec=1.0,
+                    )
                 return
+            self._odom_reject_streak = 0
 
         self._odom_last_pos = (px, py, pz)
+        self._odom_last_accept_recv = now
 
         # 5) 协方差（对角），ENU->NED 时位置/速度的 x/y 方差互换
         pos_var = self.odom_position_noise
@@ -940,7 +1016,10 @@ class MavlinkBridge(Node):
         vel_cov[11] = 0.0 if not self.odom_use_velocity else self.odom_velocity_noise_z
 
         # 6) 时间戳：与 TIMESYNC 应答用同一个时钟（epoch 纳秒 -> 微秒）
-        time_usec = int(stamp_s * 1e6) if stamp_s > 0 else int(time.time() * 1e6)
+        if abs(stamp_s - now_epoch) > 1.0:
+            time_usec = int(now_epoch * 1e6)
+        else:
+            time_usec = int(stamp_s * 1e6) if stamp_s > 0 else int(now_epoch * 1e6)
 
         # 我们已在本地统一转成 NED/FRD，所以固定声明 LOCAL_NED，
         # PX4 的 LOCAL_NED 分支是「直接拷贝」，不做任何二次换算。
@@ -983,6 +1062,8 @@ class MavlinkBridge(Node):
             odom_count = self._odom_count
         with self._range_lock:
             range_m = self._range_m
+            range_quality = self._range_quality
+            range_stamp = self._range_stamp
             range_sent = self._range_sent
         cm = self._height_cm()
         ready, reason = self._is_ready()
@@ -1003,8 +1084,10 @@ class MavlinkBridge(Node):
         if self.odom_uplink_enabled:
             text += f" | ODOMETRY 已发 {odom_count} 帧, 跳变丢弃 {self._odom_rejected_jump}"
         if self.range_uplink_enabled:
+            range_age_ms = (time.monotonic() - range_stamp) * 1000.0 if range_stamp else None
             text += (
-                f" | 测距={range_m * 100:.1f}cm DISTANCE_SENSOR 已发 {range_sent} 帧"
+                f" | 测距={range_m * 100:.1f}cm q={range_quality} "
+                f"age={range_age_ms:.0f}ms DISTANCE_SENSOR 已发 {range_sent} 帧"
                 if range_m is not None
                 else f" | 测距=-- (未收到 {self.get_parameter('range_topic').value})"
             )

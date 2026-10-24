@@ -4283,11 +4283,11 @@ sudo systemctl enable  --now px4-ev-chain
   Cartographer 把巨大时间差当成运动，输出数百米假位姿。
 
 ### 2. 改动
-- 去掉 `mavlink-ws-chain.service` 对
-  `systemd-time-wait-sync.service` 的硬依赖，避免离线飞行时链路无法启动。
-- `start_mavlink_ws.sh` 增加条件门控：`wlan0` 已连接（调试模式）时等待
-  `NTPSynchronized=yes`，最多 300 s；未连接 Wi-Fi 时按离线飞行模式立即启动。
-- 离线启动后不要中途连接 Wi-Fi；如需连网调试，先停链、同步 NTP 后重启。
+- `/etc/systemd/system/mavlink-ws-chain.service` 增加
+  `After=network-online.target systemd-time-wait-sync.service` 和
+  `Requires=systemd-time-wait-sync.service`。
+- `~/mavlink_ws/start_mavlink_ws.sh` 增加 `wait_for_ntp()`：
+  每 1 s 检查 `NTPSynchronized`，最多等 300 s；未同步则拒绝启动。
 - 备份：`mavlink-ws-chain.service.bak-20261020`、
   `start_mavlink_ws.sh.bak-20261020`。
 
@@ -4295,6 +4295,4 @@ sudo systemctl enable  --now px4-ev-chain
 - 重启日志：`等待 NTP 时间同步 ...` → `NTP 已同步，继续启动链路。`
 - 扫描 15.15 Hz；EV 预热完成；`ekf_ok=True flags=0x1af`，
   高度 9 cm，ODOMETRY 934 帧，跳变 0。
-- 首次 NTP 同步约 155.9 s；首次 `ekf_ok=True` 约 15 s after gate；
-  总开机到可用约 2 分 51 秒。主要耗时是 Wi-Fi 关联，不是 NTP 查询。
 - `amphi.lua`、飞控参数、Cartographer 配置均未改动。

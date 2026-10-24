@@ -45,9 +45,9 @@ class TfToOdom(Node):
         self.declare_parameter("output_topic", "/odom_from_slam")
         self.declare_parameter("sample_rate", 50.0)
         self.declare_parameter("publish_rate", 30.0)
-        self.declare_parameter("velocity_window_s", 0.2)
-        self.declare_parameter("deadband_mps", 0.05)
-        self.declare_parameter("max_speed_mps", 1.0)
+        self.declare_parameter("velocity_window_s", 0.14)
+        self.declare_parameter("deadband_mps", 0.015)
+        self.declare_parameter("max_speed_mps", 2.0)
         self.declare_parameter("lowpass_alpha", 0.4)
         self.declare_parameter("max_tf_age_s", 0.3)
 
