@@ -4423,3 +4423,17 @@ sudo systemctl enable  --now px4-ev-chain
   实际交付受设备链路限制；保持 640×480 以保证二维码识别距离和清晰度。
 - 回滚：恢复 `code_reader_node.cpp` 和 `shelf_scan.yaml` 上一提交，
   重新执行 `colcon build --symlink-install --packages-select shelf_scan_pkg`。
+
+## 2026-10-24 补记：队友自包含执行包
+
+- 新增 `mavlink_ws/deliverables/PX4_D_TASK_20261024/`，供队友直接下载执行。
+- 包内含网页地面站、三个 ROS 2 包、预检/起飞/中止/激光脚本、安装脚本、
+  GPIO 规则、场地和桥接参考配置、完整操作手册。
+- 新增一键安装脚本 `scripts/install_to_orange_pi.sh`；已有包会先改名备份，
+  不自动覆盖已有 `groundstation.env`，也不自动覆盖 `mavlink_bridge` 配置。
+- 生成 ZIP 和 TAR.GZ 两份分发文件，并逐文件校验归档内容；未包含
+  SSH 凭据、运行日志、飞控日志、盘点会话或 Python 缓存。
+- ZIP SHA-256：
+  `92132e7307e4e5f652458a0c607e77f8e2a1439f3733d4189ad55c0ecf3c2529`
+- TAR.GZ SHA-256：
+  `8651f56f60a60b47755888d42e57176ac883fee601695089e4ce8a637dc5e01a`
