@@ -434,14 +434,24 @@ private:
   Detection detect(const cv::Mat & frame)
   {
     Detection detection;
-    const cv::Mat processed = preprocess(frame);
+    // Contrast-enhanced and raw frames are complementary. Running both on
+    // every frame halved the practical detection rate, so alternate variants
+    // between consecutive detections while preserving both as fallbacks.
+    const bool use_raw = raw_variant_;
+    raw_variant_ = !raw_variant_;
+    cv::Mat processed;
+    const cv::Mat * candidate_ptr = &frame;
+    if (!use_raw) {
+      processed = preprocess(frame);
+      candidate_ptr = &processed;
+    }
+    const cv::Mat & candidate = *candidate_ptr;
     int number = 0;
     double confidence = 0.0;
     cv::Point2f center;
     std::vector<cv::Point2f> box;
 
-    if (decodeAprilTag(processed, number, confidence, center, box) ||
-      decodeAprilTag(frame, number, confidence, center, box))
+    if (decodeAprilTag(candidate, number, confidence, center, box))
     {
       detection.valid = true;
       detection.number = number;
@@ -452,8 +462,7 @@ private:
       detection.source = "apriltag";
       return detection;
     }
-    if (decodeQr(processed, number, confidence, center, box) ||
-      decodeQr(frame, number, confidence, center, box))
+    if (decodeQr(candidate, number, confidence, center, box))
     {
       detection.valid = true;
       detection.number = number;
@@ -461,7 +470,7 @@ private:
       detection.center = center;
       detection.corners = box;
       detection.px_per_cm = scaleFromCorners(box);
-      detection.source = "qr";
+      detection.source = use_raw ? "qr.raw" : "qr.enhanced";
       detection.qr_count = last_qr_count_.load();
       return detection;
     }
@@ -730,7 +739,8 @@ private:
       if (image.empty()) {
         RCLCPP_ERROR(get_logger(), "无法读取图片文件：%s", target_image_path_.c_str());
       } else {
-        const Detection detection = detect(image);
+        Detection detection = detect(image);
+        if (!detection.valid) detection = detect(image);
         if (detection.valid) votes[detection.number] += 100;
         if (preview_enabled_) {
           // 静帧直接推，不受 preview_fps_ 节流影响
@@ -797,6 +807,7 @@ private:
   cv::VideoCapture camera_;
   zbar_image_scanner_t * zbar_scanner_ = nullptr;
   std::atomic<int> last_qr_count_{0};  // decodeQrWithZbar 最近一帧二维码个数
+  bool raw_variant_ = false;
   cv::Ptr<cv::aruco::Dictionary> apriltag_dictionary_;
   cv::Ptr<cv::aruco::DetectorParameters> apriltag_parameters_;
 
