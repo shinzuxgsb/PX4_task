@@ -4327,6 +4327,8 @@ sudo systemctl enable  --now px4-ev-chain
 - 摄像头默认 `/dev/video0`；激光笔沿用排针 18 脚，Linux 映射为
   `gpiochip1` 第 4 脚（全局 GPIO 36），低电平点亮。新增
   `99-orange-pi-gpio.rules`，将 gpiochip 权限交给已有的 `dialout` 组。
+- 新增 `laser_test.sh`，允许现场分别测试低电平/高电平极性，最长 10 秒，
+  结束或中断时自动恢复关闭电平；任务或激光节点运行时拒绝执行。
 
 ### 3. 香橙派环境改动
 - 安装编译依赖：`libopencv-dev`、`libzbar-dev`、`ros-humble-angles`、`gpiod`。

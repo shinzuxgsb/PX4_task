@@ -69,6 +69,28 @@ sudo chgrp dialout /dev/gpiochip*
 sudo chmod 0660 /dev/gpiochip*
 ```
 
+手动检查激光笔：
+
+```bash
+# 默认接线为低电平点亮，最长只允许 10 秒
+bash ~/mavlink_ws/laser_test.sh low 10
+
+# 若默认极性不亮，再用高电平试一次
+bash ~/mavlink_ws/laser_test.sh high 10
+
+# 强制恢复默认关闭电平
+bash ~/mavlink_ws/laser_test.sh off
+```
+
+如果确认只有高电平才会亮，启动预检时加：
+
+```bash
+LASER_ACTIVE_HIGH=true ~/mavlink_ws/shelf_preflight.sh
+```
+
+测试期间保持激光朝向安全方向，并确保没有执行 `shelf_preflight.sh` 或
+`shelf_takeoff.sh`。脚本发现激光节点或任务进程在运行时会拒绝执行。
+
 ## 首次实飞顺序
 
 1. 拆桨完成预检、摄像头预览、激光开关和 `shelf_selftest`；

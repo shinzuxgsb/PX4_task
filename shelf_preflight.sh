@@ -7,6 +7,9 @@ GO_FILE="/tmp/shelf_takeoff_go"
 ABORT_FILE="/tmp/shelf_abort"
 LOG_FILE="/tmp/shelf_px4_launch.log"
 PID_FILE="/tmp/shelf_px4.launch.pid"
+LASER_GPIO_CHIP="${LASER_GPIO_CHIP:-gpiochip1}"
+LASER_GPIO_LINE="${LASER_GPIO_LINE:-4}"
+LASER_ACTIVE_HIGH="${LASER_ACTIVE_HIGH:-false}"
 
 if [[ -f "${PID_FILE}" ]]; then
   old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
@@ -66,9 +69,9 @@ nohup setsid ros2 launch shelf_px4_bridge shelf_px4.launch.py \
   code_mode:=qr \
   laser_driver:=gpio \
   gpio_mode:=gpiod \
-  gpio_chip:=gpiochip1 \
-  gpio_line:=4 \
-  laser_active_high:=false \
+  gpio_chip:="${LASER_GPIO_CHIP}" \
+  gpio_line:="${LASER_GPIO_LINE}" \
+  laser_active_high:="${LASER_ACTIVE_HIGH}" \
   </dev/null >"${LOG_FILE}" 2>&1 &
 launch_pid="$!"
 echo "${launch_pid}" >"${PID_FILE}"
