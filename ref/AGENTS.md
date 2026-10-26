@@ -1,7 +1,11 @@
 # PX4 无人机上位机项目 —— 交接说明（Codex 新会话请先读这里）
 
-> 更新：2026-10-12　｜　配套详细档案：**[`SSH_ACCESS.md`](SSH_ACCESS.md)**（含口令、雷达参数、踩坑记录）
+> 更新：2026-10-26　｜　配套详细档案：**[`SSH_ACCESS.md`](SSH_ACCESS.md)**（含口令、雷达参数、踩坑记录）
 > 安全提醒：`SSH_ACCESS.md` 含明文口令，**不要提交 Git、不要外发**。
+>
+> **香橙派当前 SSH 地址（2026-10-26 用户确认）**：`orangepi@10.249.123.10`，
+> 口令不变（`orangepi`）。新聊天直接使用此地址，不要重复询问。
+> 地面站电脑地址是 `10.249.114.28`，二者不要混淆。
 >
 > ⚠️ **2026-10-17 状态变更（最重要，先看这条）**：147 上**开机自启已换成新链 `mavlink-ws-chain.service`**
 > → `~/mavlink_ws/start_mavlink_ws.sh` → **队友那套**：bluesea2（串口雷达 `/dev/ttyS4`）+ Cartographer（`amphi.lua`）
@@ -52,7 +56,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 香橙派 IP（WiFi） | `10.23.87.147`，用户/口令 `orangepi` / `orangepi` |
+| 香橙派 IP（WiFi） | `10.249.123.10`，用户/口令 `orangepi` / `orangepi` |
 | 有线网口 | `enP3p49s0`，**Realtek RTL8125 2.5GbE（PCIe）**，驱动 `r8125 9.009.00` |
 | 有线网口地址 | 静态 **`192.168.158.100/24`**（NetworkManager 连接 `Wired connection 1`） |
 | 雷达（现用，2026-10-09 起） | **`LDS-50C-R`（串口款）**：香橙派 **UART4 → `/dev/ttyS4`**，921600 8N1；40pin 排针 19=TX / 23=RX（pinmux `UART4_M2`） |
@@ -446,7 +450,7 @@ pkill -f bluesea2_node
 
 - **正本（canonical）只在本机**：`D:\px4无人机\CHANGELOG.md` 与 `AGENTS.md`。
 - **板上 `~/px4_ws/docs/` 放只读镜像**（方便队友在板上直接翻），文件名相同：
-  - 推过去：`scp CHANGELOG.md AGENTS.md orangepi@10.23.87.147:~/px4_ws/docs/`
+  - 推过去：`scp CHANGELOG.md AGENTS.md orangepi@10.249.123.10:~/px4_ws/docs/`
   - ⚠️ **不要在板上编辑这两个文件**：它们只是镜像，下次从本机推会覆盖。
     队友若在板上改了，必须先在板上 `md5sum` 确认，再拉回本机合并（`scp` 反向）。
 - `SSH_ACCESS.md` **只留本机、绝不推到板上**（含明文口令）。

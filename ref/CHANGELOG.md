@@ -4495,3 +4495,11 @@ sudo systemctl enable  --now px4-ev-chain
   TAR.GZ SHA-256
   `0709cb2c070d3f7fa41e6f971a2f2f13f5c1d4fc0ad23fd89a6ed1e16396c009`。
 - 本次只做配置、离线自测和预检，没有点击起飞、没有解锁。
+
+## 2026-10-26 补记：固化香橙派 SSH 地址
+
+- 用户确认香橙派当前 SSH 地址为 `orangepi@10.249.123.10`，口令仍为
+  `orangepi`。该地址已写入根目录 `AGENTS.md`、`SSH_ACCESS.md` 和仓库
+  `ref/AGENTS.md`，新会话应按项目入口文档直接使用，不重复询问。
+- 地面站电脑地址 `10.249.114.28` 与香橙派地址用途不同，继续分别保留，
+  不要互相替换。
